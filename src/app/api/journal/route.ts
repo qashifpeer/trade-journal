@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { sanityClient } from '@/src/lib/sanity.client'
+import { sanityClient } from '@/src//lib/sanity.client'
 
 export async function POST(request: Request) {
   try {
@@ -21,15 +21,19 @@ export async function POST(request: Request) {
       exitReason: body.exitReason,
       quantity: body.quantity,
       result: body.result,
-      mistakes: body.mistakes,
-      emotionalState: body.emotionalState,
+      mistakes: body.mistakes ?? [],
+      emotionalState: body.emotionalState ?? [],
       learnedLessons: body.learnedLessons,
     })
 
     return NextResponse.json({ success: true, id: doc._id })
-  } catch {
+  } catch (error) {
+    console.error('SANITY SAVE ERROR:', error)
     return NextResponse.json(
-      { error: 'Failed to save trade.' },
+      {
+        error:
+          error instanceof Error ? error.message : 'Failed to save trade.',
+      },
       { status: 500 }
     )
   }

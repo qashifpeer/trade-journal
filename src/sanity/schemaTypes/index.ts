@@ -1,3 +1,5 @@
+import { type SchemaTypeDefinition } from 'sanity'
 import { tradeLog } from './tradeLog'
-
-export const schemaTypes = [tradeLog]
+export const schema: { types: SchemaTypeDefinition[] } = {
+  types: [tradeLog],
+}
