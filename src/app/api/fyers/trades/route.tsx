@@ -1,42 +1,42 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic'
+export const dynamic = "force-dynamic";
 
 type FyersTrade = {
-  id?: string
-  orderId?: string
-  symbol?: string
-  side?: number
-  qty?: number
-  tradedPrice?: number
-  orderDateTime?: string
-}
+  id?: string;
+  orderId?: string;
+  symbol?: string;
+  side?: number;
+  qty?: number;
+  tradedPrice?: number;
+  orderDateTime?: string;
+};
 
 type RawFyersTradesResponse = {
-  ok?: boolean
-  s?: string
-  code?: number
-  message?: string
-  tradeBook?: FyersTrade[]
-  trades?: FyersTrade[]
-  orderBook?: FyersTrade[]
-  [key: string]: unknown
-}
+  ok?: boolean;
+  s?: string;
+  code?: number;
+  message?: string;
+  tradeBook?: FyersTrade[];
+  trades?: FyersTrade[];
+  orderBook?: FyersTrade[];
+  [key: string]: unknown;
+};
 
 export async function GET(request: NextRequest) {
   try {
-    const accessToken = request.cookies.get('fyers_access_token')?.value
-    const appId = process.env.FYERS_APP_ID
+    const accessToken = request.cookies.get("fyers_access_token")?.value;
+    const appId = process.env.FYERS_APP_ID;
 
     if (!accessToken) {
       return NextResponse.json(
         {
           success: false,
           trades: [],
-          error: 'Missing FYERS access token',
+          error: "Missing FYERS access token",
         },
-        { status: 401 }
-      )
+        { status: 401 },
+      );
     }
 
     if (!appId) {
@@ -44,36 +44,46 @@ export async function GET(request: NextRequest) {
         {
           success: false,
           trades: [],
-          error: 'Missing FYERS_APP_ID in environment variables',
+          error: "Missing FYERS_APP_ID in environment variables",
         },
-        { status: 500 }
-      )
+        { status: 500 },
+      );
     }
 
-    const fyersRes = await fetch('https://api-t1.fyers.in/api/v3/tradebook', {
-      method: 'GET',
+    const fyersRes = await fetch("https://api-t1.fyers.in/api/v3/tradebook", {
+      method: "GET",
       headers: {
         Authorization: `${appId}:${accessToken}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
-      cache: 'no-store',
-    })
+      cache: "no-store",
+    });
 
-    const rawText = await fyersRes.text()
+    const rawText = await fyersRes.text();
 
-    let data: RawFyersTradesResponse = {}
+    let data: RawFyersTradesResponse = {};
+    console.log("Raw FYERS response:", JSON.stringify(data, null, 2));
+
+    // If tradeBook exists, log the first trade to see its structure
+    if (Array.isArray(data.tradeBook) && data.tradeBook.length > 0) {
+      console.log(
+        "First trade structure:",
+        JSON.stringify(data.tradeBook[0], null, 2),
+      );
+    }
+
     try {
-      data = rawText ? JSON.parse(rawText) : {}
+      data = rawText ? JSON.parse(rawText) : {};
     } catch {
       return NextResponse.json(
         {
           success: false,
           trades: [],
-          error: 'Invalid JSON returned by FYERS',
+          error: "Invalid JSON returned by FYERS",
           raw: rawText,
         },
-        { status: 502 }
-      )
+        { status: 502 },
+      );
     }
 
     if (!fyersRes.ok) {
@@ -82,23 +92,23 @@ export async function GET(request: NextRequest) {
           success: false,
           trades: [],
           error:
-            typeof data.message === 'string'
+            typeof data.message === "string"
               ? data.message
-              : 'Failed to fetch FYERS tradebook',
+              : "Failed to fetch FYERS tradebook",
           fyersStatus: fyersRes.status,
           fyersResponse: data,
         },
-        { status: fyersRes.status }
-      )
+        { status: fyersRes.status },
+      );
     }
 
     const trades = Array.isArray(data.tradeBook)
       ? data.tradeBook
       : Array.isArray(data.trades)
-      ? data.trades
-      : Array.isArray(data.orderBook)
-      ? data.orderBook
-      : []
+        ? data.trades
+        : Array.isArray(data.orderBook)
+          ? data.orderBook
+          : [];
 
     return NextResponse.json(
       {
@@ -106,16 +116,17 @@ export async function GET(request: NextRequest) {
         count: trades.length,
         trades,
       },
-      { status: 200 }
-    )
+      { status: 200 },
+    );
   } catch (error) {
     return NextResponse.json(
       {
         success: false,
         trades: [],
-        error: error instanceof Error ? error.message : 'Unexpected server error',
+        error:
+          error instanceof Error ? error.message : "Unexpected server error",
       },
-      { status: 500 }
-    )
+      { status: 500 },
+    );
   }
 }
