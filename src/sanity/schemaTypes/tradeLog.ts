@@ -7,9 +7,57 @@ export const tradeLog = defineType({
   fields: [
     defineField({
       name: 'date',
-      title: 'Date',
+      title: 'Trade Date',
       type: 'date',
+      initialValue: () => new Date().toISOString().split('T')[0],
       validation: (Rule) => Rule.required(),
+    }),
+
+    defineField({
+      name: 'broker',
+      title: 'Broker',
+      type: 'string',
+      initialValue: 'FYERS',
+    }),
+    defineField({
+      name: 'brokerTradeId',
+      title: 'Broker Trade ID',
+      type: 'string',
+    }),
+    defineField({
+      name: 'fyersOrderId',
+      title: 'FYERS Order ID',
+      type: 'string',
+    }),
+    defineField({
+      name: 'exchangeOrderId',
+      title: 'Exchange Order ID',
+      type: 'string',
+    }),
+    defineField({
+      name: 'importStatus',
+      title: 'Import Status',
+      type: 'string',
+      initialValue: 'draft',
+      options: {
+        list: [
+          { title: 'Draft', value: 'draft' },
+          { title: 'Reviewed', value: 'reviewed' },
+          { title: 'Final', value: 'final' },
+        ],
+      },
+    }),
+
+    defineField({
+      name: 'symbol',
+      title: 'Symbol Traded',
+      type: 'string',
+      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: 'instrumentName',
+      title: 'Instrument Name',
+      type: 'string',
     }),
     defineField({
       name: 'tradeType',
@@ -19,22 +67,132 @@ export const tradeLog = defineType({
         list: [
           { title: 'Call', value: 'Call' },
           { title: 'Put', value: 'Put' },
+          { title: 'Buy', value: 'Buy' },
+          { title: 'Sell', value: 'Sell' },
         ],
       },
-      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: 'side',
+      title: 'Side',
+      type: 'string',
+      options: {
+        list: [
+          { title: 'Buy', value: 'Buy' },
+          { title: 'Sell', value: 'Sell' },
+        ],
+      },
+    }),
+    defineField({
+      name: 'productType',
+      title: 'Product Type',
+      type: 'string',
+    }),
+    defineField({
+      name: 'segment',
+      title: 'Segment',
+      type: 'string',
+    }),
+    defineField({
+      name: 'exchange',
+      title: 'Exchange',
+      type: 'string',
+    }),
+
+    defineField({
+      name: 'entryDateTime',
+      title: 'Entry Date Time',
+      type: 'datetime',
+    }),
+    defineField({
+      name: 'exitDateTime',
+      title: 'Exit Date Time',
+      type: 'datetime',
     }),
     defineField({
       name: 'entryTime',
-      title: 'Trade Enter Time',
+      title: 'Entry Time',
       type: 'string',
-      validation: (Rule) => Rule.required(),
     }),
     defineField({
       name: 'exitTime',
-      title: 'Trade Exit Time',
+      title: 'Exit Time',
       type: 'string',
-      validation: (Rule) => Rule.required(),
     }),
+
+    defineField({
+      name: 'quantity',
+      title: 'Quantity',
+      type: 'number',
+      validation: (Rule) => Rule.required().min(1),
+    }),
+    defineField({
+      name: 'filledQuantity',
+      title: 'Filled Quantity',
+      type: 'number',
+    }),
+    defineField({
+      name: 'entryPrice',
+      title: 'Entry Price',
+      type: 'number',
+    }),
+    defineField({
+      name: 'exitPrice',
+      title: 'Exit Price',
+      type: 'number',
+    }),
+    defineField({
+      name: 'averagePrice',
+      title: 'Average Price',
+      type: 'number',
+    }),
+    defineField({
+      name: 'tradedPrice',
+      title: 'Traded Price',
+      type: 'number',
+    }),
+    defineField({
+      name: 'grossAmount',
+      title: 'Gross Amount Traded',
+      type: 'number',
+    }),
+    defineField({
+      name: 'brokerage',
+      title: 'Brokerage',
+      type: 'number',
+    }),
+    defineField({
+      name: 'charges',
+      title: 'Other Charges',
+      type: 'number',
+    }),
+    defineField({
+      name: 'netAmount',
+      title: 'Net Amount',
+      type: 'number',
+    }),
+    defineField({
+      name: 'result',
+      title: 'PnL Result',
+      type: 'number',
+    }),
+
+    defineField({
+      name: 'status',
+      title: 'Order Status',
+      type: 'string',
+    }),
+    defineField({
+      name: 'orderType',
+      title: 'Order Type',
+      type: 'string',
+    }),
+    defineField({
+      name: 'validity',
+      title: 'Order Validity',
+      type: 'string',
+    }),
+
     defineField({
       name: 'exitReason',
       title: 'Exit Reason',
@@ -43,23 +201,13 @@ export const tradeLog = defineType({
         list: [
           { title: 'Target', value: 'Target' },
           { title: 'SL', value: 'SL' },
+          { title: 'Trailing SL', value: 'Trailing SL' },
+          { title: 'Manual Exit', value: 'Manual Exit' },
           { title: 'Other', value: 'Other' },
         ],
       },
-      validation: (Rule) => Rule.required(),
     }),
-    defineField({
-      name: 'quantity',
-      title: 'Quantity',
-      type: 'number',
-      validation: (Rule) => Rule.required().min(1),
-    }),
-    defineField({
-      name: 'result',
-      title: 'Result',
-      type: 'number',
-      validation: (Rule) => Rule.required(),
-    }),
+
     defineField({
       name: 'mistakes',
       title: 'Mistakes',
@@ -79,6 +227,7 @@ export const tradeLog = defineType({
         ],
       },
     }),
+
     defineField({
       name: 'emotionalState',
       title: 'Emotional State',
@@ -94,18 +243,43 @@ export const tradeLog = defineType({
         ],
       },
     }),
+
+    defineField({
+      name: 'setupType',
+      title: 'Setup Type',
+      type: 'string',
+    }),
+    defineField({
+      name: 'strategyTag',
+      title: 'Strategy Tag',
+      type: 'string',
+    }),
+    defineField({
+      name: 'notes',
+      title: 'Notes',
+      type: 'text',
+      rows: 4,
+    }),
     defineField({
       name: 'learnedLessons',
       title: 'Learned Lessons',
       type: 'text',
       rows: 5,
-      validation: (Rule) => Rule.required(),
     }),
   ],
+
   preview: {
     select: {
-      title: 'tradeType',
+      title: 'symbol',
       subtitle: 'date',
+      side: 'side',
+      result: 'result',
+    },
+    prepare({ title, subtitle, side, result }) {
+      return {
+        title: `${title || 'Trade'}${side ? ` • ${side}` : ''}`,
+        subtitle: `${subtitle || ''}${typeof result === 'number' ? ` • PnL: ${result}` : ''}`,
+      }
     },
   },
 })
