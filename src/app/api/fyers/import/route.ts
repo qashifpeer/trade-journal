@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { sanityClient } from '@/src//lib/sanity.client'
+import { writeClient } from '@/src/lib/sanity.client'
 
 function toDateOnly(value?: string) {
   if (!value) return new Date().toISOString().split('T')[0]
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     const draftId = `drafts.fyers-${brokerTradeId}`
 
-    const doc = await sanityClient.createOrReplace({
+    const doc = await writeClient.createOrReplace({
       _id: draftId,
       _type: 'tradeLog',
       date: tradeDate,
