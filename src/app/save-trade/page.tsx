@@ -1,68 +1,68 @@
 // src/app/save-trade/page.tsx
-'use client'
+"use client";
 
-import { useEffect, useState, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 function parseFyersDateToISO(fyersDate: string): string {
-  const [datePart] = fyersDate.split(' ')
-  if (!datePart) return new Date().toISOString().split('T')[0]
+  const [datePart] = fyersDate.split(" ");
+  if (!datePart) return new Date().toISOString().split("T")[0];
 
-  const [day, monthStr, year] = datePart.split('-')
+  const [day, monthStr, year] = datePart.split("-");
 
   const months: Record<string, string> = {
-    Jan: '01',
-    Feb: '02',
-    Mar: '03',
-    Apr: '04',
-    May: '05',
-    Jun: '06',
-    Jul: '07',
-    Aug: '08',
-    Sep: '09',
-    Oct: '10',
-    Nov: '11',
-    Dec: '12',
-  }
+    Jan: "01",
+    Feb: "02",
+    Mar: "03",
+    Apr: "04",
+    May: "05",
+    Jun: "06",
+    Jul: "07",
+    Aug: "08",
+    Sep: "09",
+    Oct: "10",
+    Nov: "11",
+    Dec: "12",
+  };
 
-  const month = months[monthStr]
+  const month = months[monthStr];
   if (!month || !day || !year) {
-    return new Date().toISOString().split('T')[0]
+    return new Date().toISOString().split("T")[0];
   }
 
-  return `${year}-${month}-${day.padStart(2, '0')}`
+  return `${year}-${month}-${day.padStart(2, "0")}`;
 }
 
 function SaveTradeForm() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // FYERS data from URL params
-  const [tradeId] = useState(searchParams.get('id') || '')
-  const [symbol] = useState(searchParams.get('symbol') || '')
-  const [direction] = useState(searchParams.get('direction') || '')
-  const [quantity] = useState(Number(searchParams.get('quantity')) || 0)
-  const [buyPrice] = useState(Number(searchParams.get('buyPrice')) || 0)
-  const [sellPrice] = useState(Number(searchParams.get('sellPrice')) || 0)
-  const [buyTime] = useState(searchParams.get('buyTime') || '')
-  const [sellTime] = useState(searchParams.get('sellTime') || '')
-  const [totalPnl] = useState(Number(searchParams.get('totalPnl')) || 0)
+  const [tradeId] = useState(searchParams.get("id") || "");
+  const [symbol] = useState(searchParams.get("symbol") || "");
+  const [direction] = useState(searchParams.get("direction") || "");
+  const [quantity] = useState(Number(searchParams.get("quantity")) || 0);
+  const [buyPrice] = useState(Number(searchParams.get("buyPrice")) || 0);
+  const [sellPrice] = useState(Number(searchParams.get("sellPrice")) || 0);
+  const [buyTime] = useState(searchParams.get("buyTime") || "");
+  const [sellTime] = useState(searchParams.get("sellTime") || "");
+  const [totalPnl] = useState(Number(searchParams.get("totalPnl")) || 0);
 
   // Additional fields
-  const [setup, setSetup] = useState('')
-  const [tags, setTags] = useState('')
-  const [notes, setNotes] = useState('')
-  const [mistakes, setMistakes] = useState('')
-  const [lessons, setLessons] = useState('')
-  const [emotionalState, setEmotionalState] = useState('')
-  const [marketCondition, setMarketCondition] = useState('')
+  const [setup, setSetup] = useState("");
+  const [tags, setTags] = useState("");
+  const [notes, setNotes] = useState("");
+  const [mistakes, setMistakes] = useState("");
+  const [lessons, setLessons] = useState("");
+  const [emotionalState, setEmotionalState] = useState("");
+  const [marketCondition, setMarketCondition] = useState("");
 
   const handleSave = async () => {
-    setLoading(true)
-    setError('')
+    setLoading(true);
+    setError("");
 
     try {
       const tradeData = {
@@ -79,7 +79,10 @@ function SaveTradeForm() {
 
         // Additional fields
         setup,
-        tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
         notes,
         mistakes,
         lessons,
@@ -87,37 +90,37 @@ function SaveTradeForm() {
         marketCondition,
 
         // Metadata
-       date: parseFyersDateToISO(buyTime),
+        tradeDate: parseFyersDateToISO(buyTime),
         createdAt: new Date().toISOString(),
-      }
+      };
 
-      const res = await fetch('/api/sanity/save-trade', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/sanity/save-trade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(tradeData),
-      })
+      });
 
-      const data = await res.json()
+      const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || 'Failed to save trade')
-        return
+        setError(data.error || "Failed to save trade");
+        return;
       }
 
       // Mark as saved in localStorage
-      const saved = localStorage.getItem('savedTrades')
-      const savedSet = saved ? new Set(JSON.parse(saved)) : new Set()
-      savedSet.add(tradeId)
-      localStorage.setItem('savedTrades', JSON.stringify([...savedSet]))
+      const saved = localStorage.getItem("savedTrades");
+      const savedSet = saved ? new Set(JSON.parse(saved)) : new Set();
+      savedSet.add(tradeId);
+      localStorage.setItem("savedTrades", JSON.stringify([...savedSet]));
 
       // Redirect back to trade-details
-      router.push('/trade-details')
+      router.push("/trade-details");
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save trade')
+      setError(err instanceof Error ? err.message : "Failed to save trade");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 text-white md:px-6">
@@ -149,7 +152,7 @@ function SaveTradeForm() {
               <label className="text-sm text-slate-400">Direction</label>
               <p
                 className={`mt-1 text-lg font-semibold ${
-                  direction === 'Long' ? 'text-emerald-400' : 'text-orange-400'
+                  direction === "Long" ? "text-emerald-400" : "text-orange-400"
                 }`}
               >
                 {direction}
@@ -175,10 +178,10 @@ function SaveTradeForm() {
               <label className="text-sm text-slate-400">P&L</label>
               <p
                 className={`mt-1 font-mono text-lg font-semibold ${
-                  totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'
+                  totalPnl >= 0 ? "text-emerald-400" : "text-red-400"
                 }`}
               >
-                {totalPnl >= 0 ? '+' : '-'}₹{Math.abs(totalPnl).toFixed(2)}
+                {totalPnl >= 0 ? "+" : "-"}₹{Math.abs(totalPnl).toFixed(2)}
               </p>
             </div>
 
@@ -315,12 +318,12 @@ function SaveTradeForm() {
             disabled={loading}
             className="flex-1 rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-slate-950 transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? 'Saving...' : 'Save to Sanity'}
+            {loading ? "Saving..." : "Save to Sanity"}
           </button>
         </div>
       </div>
     </main>
-  )
+  );
 }
 
 export default function SaveTradePage() {
@@ -334,5 +337,5 @@ export default function SaveTradePage() {
     >
       <SaveTradeForm />
     </Suspense>
-  )
+  );
 }
