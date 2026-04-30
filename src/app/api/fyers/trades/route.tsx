@@ -45,13 +45,13 @@ export async function GET(request: NextRequest) {
       },
       cache: "no-store",
     });
+    console.log("FYERS status:", fyersRes.status);
+    console.log("FYERS content-type:", fyersRes.headers.get("content-type"));
 
     const rawText = await fyersRes.text();
+    console.log('FYERS raw text:', rawText)
 
     let data: RawFyersTradesResponse = {};
-
-    // consoling the tradebook
-    console.log("FYERS raw response:", JSON.stringify(data, null, 2));
 
     const rawTrades = Array.isArray(data.tradeBook) ? data.tradeBook : [];
 
@@ -64,6 +64,9 @@ export async function GET(request: NextRequest) {
     } catch {
       return NextResponse.json({ success: false, trades: [] });
     }
+
+    console.log('FYERS parsed object:', JSON.stringify(data, null, 2))
+
 
     console.log("COOKIE:", request.cookies.get("fyers_access_token"));
     const trades: FyersTrade[] =
