@@ -1,6 +1,6 @@
 // src/app/api/sanity/save-trade/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { writeClient } from '@/src/sanity/lib/client'
+import { writeClient } from '@/src/lib/sanity.client'
 
 export async function POST(request: NextRequest) {
   try {
