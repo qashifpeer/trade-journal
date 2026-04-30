@@ -7,7 +7,7 @@ export const trade = defineType({
 
   fields: [
     defineField({
-      name: 'date',
+      name: 'tradeDate',
       title: 'Trade Date',
       type: 'date',
       initialValue: () => new Date().toISOString().split('T')[0],
