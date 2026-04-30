@@ -10,7 +10,6 @@ export const trade = defineType({
       name: 'tradeDate',
       title: 'Trade Date',
       type: 'date',
-      initialValue: () => new Date().toISOString().split('T')[0],
       validation: (Rule) => Rule.required(),
     }),
 

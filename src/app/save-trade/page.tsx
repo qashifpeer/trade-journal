@@ -4,6 +4,35 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
+function parseFyersDateToISO(fyersDate: string): string {
+  const [datePart] = fyersDate.split(' ')
+  if (!datePart) return new Date().toISOString().split('T')[0]
+
+  const [day, monthStr, year] = datePart.split('-')
+
+  const months: Record<string, string> = {
+    Jan: '01',
+    Feb: '02',
+    Mar: '03',
+    Apr: '04',
+    May: '05',
+    Jun: '06',
+    Jul: '07',
+    Aug: '08',
+    Sep: '09',
+    Oct: '10',
+    Nov: '11',
+    Dec: '12',
+  }
+
+  const month = months[monthStr]
+  if (!month || !day || !year) {
+    return new Date().toISOString().split('T')[0]
+  }
+
+  return `${year}-${month}-${day.padStart(2, '0')}`
+}
+
 function SaveTradeForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -58,7 +87,7 @@ function SaveTradeForm() {
         marketCondition,
 
         // Metadata
-        tradeDate: new Date(buyTime).toISOString(),
+       date: parseFyersDateToISO(buyTime),
         createdAt: new Date().toISOString(),
       }
 
