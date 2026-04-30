@@ -1,6 +1,6 @@
 // src/app/api/sanity/save-trade/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { client } from '@/src/sanity/lib/client'
+import { writeClient } from '@/src/sanity/lib/client'
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Create Sanity document
-    const trade = await client.create({
+    const trade = await writeClient.create({
       _type: 'trade',
       fyersTradeId,
       symbol,
