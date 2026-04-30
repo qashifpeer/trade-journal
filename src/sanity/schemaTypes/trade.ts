@@ -6,7 +6,6 @@ export const trade = defineType({
   type: 'document',
 
   fields: [
-    // 📅 Date
     defineField({
       name: 'date',
       title: 'Trade Date',
@@ -15,23 +14,13 @@ export const trade = defineType({
       validation: (Rule) => Rule.required(),
     }),
 
-    // 🏦 Broker
     defineField({
-      name: 'broker',
-      title: 'Broker',
-      type: 'string',
-      initialValue: 'FYERS',
-    }),
-
-    // 🔗 FYERS Trade ID (IMPORTANT for deduplication)
-    defineField({
-      name: 'tradeId',
-      title: 'Trade ID',
+      name: 'fyersTradeId',
+      title: 'FYERS Trade ID',
       type: 'string',
       validation: (Rule) => Rule.required(),
     }),
 
-    // 📊 Symbol
     defineField({
       name: 'symbol',
       title: 'Symbol',
@@ -39,122 +28,149 @@ export const trade = defineType({
       validation: (Rule) => Rule.required(),
     }),
 
-    // 🔁 Side
     defineField({
-      name: 'side',
-      title: 'Trade Side',
+      name: 'direction',
+      title: 'Direction',
       type: 'string',
       options: {
         list: [
-          { title: 'LONG', value: 'LONG' },
-          { title: 'SHORT', value: 'SHORT' },
+          { title: 'Long', value: 'Long' },
+          { title: 'Short', value: 'Short' },
         ],
       },
       validation: (Rule) => Rule.required(),
     }),
 
-    // ⏰ Entry Time
     defineField({
-      name: 'entryTime',
-      title: 'Entry Time',
-      type: 'datetime',
+      name: 'quantity',
+      title: 'Quantity',
+      type: 'number',
+      validation: (Rule) => Rule.required().positive(),
     }),
 
-    // ⏰ Exit Time
-    defineField({
-      name: 'exitTime',
-      title: 'Exit Time',
-      type: 'datetime',
-    }),
-
-    // 💰 Entry Price
     defineField({
       name: 'entryPrice',
       title: 'Entry Price',
       type: 'number',
+      validation: (Rule) => Rule.required().min(0),
     }),
 
-    // 💰 Exit Price
     defineField({
       name: 'exitPrice',
       title: 'Exit Price',
       type: 'number',
+      validation: (Rule) => Rule.required().min(0),
     }),
 
-    // 📦 Quantity
     defineField({
-      name: 'qty',
-      title: 'Quantity',
-      type: 'number',
+      name: 'entryTime',
+      title: 'Entry Time',
+      type: 'string',
+      validation: (Rule) => Rule.required(),
     }),
 
-    // 📈 PnL
+    defineField({
+      name: 'exitTime',
+      title: 'Exit Time',
+      type: 'string',
+      validation: (Rule) => Rule.required(),
+    }),
+
     defineField({
       name: 'pnl',
-      title: 'Profit / Loss',
+      title: 'Total P&L',
       type: 'number',
+      validation: (Rule) => Rule.required(),
     }),
 
-    // 📊 % Return (VERY useful for your 3% goal)
     defineField({
-      name: 'returnPercent',
-      title: 'Return (%)',
-      type: 'number',
+      name: 'setup',
+      title: 'Setup / Strategy',
+      type: 'string',
     }),
 
-    // ❌ Mistakes (Checkbox style)
     defineField({
-      name: 'mistakes',
-      title: 'Trade Mistakes',
+      name: 'tags',
+      title: 'Tags',
       type: 'array',
       of: [{ type: 'string' }],
+    }),
+
+    defineField({
+      name: 'marketCondition',
+      title: 'Market Condition',
+      type: 'string',
       options: {
         list: [
-          { title: 'Over-trading', value: 'over-trading' },
-          { title: 'Revenge trading', value: 'revenge-trading' },
-          { title: 'Risked too much', value: 'risked-too-much' },
-          { title: 'Exit early', value: 'exit-early' },
-          { title: 'FOMO entry', value: 'fomo-entry' },
-          { title: 'Ignored SL', value: 'ignored-sl' },
-          { title: 'No mistakes', value: 'no-mistakes' },
+          { title: 'Trending', value: 'trending' },
+          { title: 'Ranging', value: 'ranging' },
+          { title: 'Volatile', value: 'volatile' },
+          { title: 'Calm', value: 'calm' },
         ],
       },
     }),
 
-    // 🧠 Emotional State
     defineField({
-      name: 'emotion',
+      name: 'emotionalState',
       title: 'Emotional State',
       type: 'string',
       options: {
         list: [
+          { title: 'Confident', value: 'confident' },
           { title: 'Calm', value: 'calm' },
-          { title: 'Frustrated', value: 'frustrated' },
-          { title: 'Impatient', value: 'impatient' },
-          { title: 'Overconfident', value: 'overconfident' },
           { title: 'Anxious', value: 'anxious' },
+          { title: 'Fearful', value: 'fearful' },
+          { title: 'Greedy', value: 'greedy' },
         ],
       },
     }),
 
-    // 📘 Lessons
+    defineField({
+      name: 'notes',
+      title: 'Trade Notes',
+      type: 'text',
+      rows: 4,
+    }),
+
+    defineField({
+      name: 'mistakes',
+      title: 'Mistakes',
+      type: 'text',
+      rows: 4,
+    }),
+
     defineField({
       name: 'lessons',
       title: 'Lessons Learned',
       type: 'text',
+      rows: 4,
+    }),
+
+    defineField({
+      name: 'createdAt',
+      title: 'Created At',
+      type: 'datetime',
+      initialValue: () => new Date().toISOString(),
+      validation: (Rule) => Rule.required(),
     }),
   ],
 
-  // 🔥 Optional: Preview in Sanity Studio
   preview: {
     select: {
       title: 'symbol',
-      subtitle: 'pnl',
+      subtitle: 'direction',
+      pnl: 'pnl',
+      date: 'date',
     },
-    prepare({ title, subtitle }) {
+    prepare({ title, subtitle, pnl, date }) {
+      const pnlText =
+        typeof pnl === 'number'
+          ? `${pnl >= 0 ? '+' : '-'}₹${Math.abs(pnl).toFixed(2)}`
+          : 'No P&L'
+
       return {
-        title: title,
-        subtitle: `PnL: ₹${subtitle ?? 0}`,
+        title: title || 'Untitled Trade',
+        subtitle: `${subtitle || 'No direction'} • ${pnlText} • ${date || 'No date'}`,
       }
     },
   },

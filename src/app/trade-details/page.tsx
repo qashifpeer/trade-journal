@@ -1,6 +1,8 @@
+// src/app/trade-details/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 type MergedTrade = {
   id: string
@@ -22,11 +24,11 @@ type TradesApiResponse = {
 }
 
 export default function TradeDetailsPage() {
+  const router = useRouter()
   const [trades, setTrades] = useState<MergedTrade[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
-  const [importingId, setImportingId] = useState<string | null>(null)
+  const [savedTrades, setSavedTrades] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let cancelled = false
@@ -64,35 +66,34 @@ export default function TradeDetailsPage() {
 
     loadTrades()
 
+    // Load saved trades from localStorage
+    const saved = localStorage.getItem('savedTrades')
+    if (saved) {
+      try {
+        setSavedTrades(new Set(JSON.parse(saved)))
+      } catch {}
+    }
+
     return () => {
       cancelled = true
     }
   }, [])
 
-  const handleImport = async (trade: MergedTrade) => {
-    setImportingId(trade.id)
-    setMessage('')
+  const handleSaveTrade = (trade: MergedTrade) => {
+    // Encode trade data in URL params
+    const params = new URLSearchParams({
+      id: trade.id,
+      symbol: trade.symbol,
+      direction: trade.direction,
+      quantity: trade.quantity.toString(),
+      buyPrice: trade.buyPrice.toString(),
+      sellPrice: trade.sellPrice.toString(),
+      buyTime: trade.buyTime,
+      sellTime: trade.sellTime,
+      totalPnl: trade.totalPnl.toString(),
+    })
 
-    try {
-      const res = await fetch('/api/fyers/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trade),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setMessage(data.error || 'Import failed')
-        return
-      }
-
-      setMessage(`Imported successfully: ${trade.symbol}`)
-    } catch {
-      setMessage('Import failed')
-    } finally {
-      setImportingId(null)
-    }
+    router.push(`/save-trade?${params.toString()}`)
   }
 
   const formatPrice = (value: number) => `₹${value.toFixed(2)}`
@@ -133,12 +134,6 @@ export default function TradeDetailsPage() {
         </div>
       )}
 
-      {message && (
-        <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-emerald-400">
-          {message}
-        </div>
-      )}
-
       {!loading && !error && trades.length === 0 && (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-slate-300">
           No complete trades found for this account right now.
@@ -153,7 +148,7 @@ export default function TradeDetailsPage() {
 
       <div className="grid gap-4">
         {trades.map((trade) => {
-          const isImporting = importingId === trade.id
+          const isSaved = savedTrades.has(trade.id)
 
           return (
             <div
@@ -165,7 +160,7 @@ export default function TradeDetailsPage() {
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                     Symbol
                   </p>
-                  <p className="mt-1 font-semibold break-all">{trade.symbol}</p>
+                  <p className="mt-1 break-all font-semibold">{trade.symbol}</p>
                 </div>
 
                 <div>
@@ -173,7 +168,7 @@ export default function TradeDetailsPage() {
                     Direction
                   </p>
                   <p
-                    className={`mt-1 font-semibold ${
+                    className={`mt-1 font-semibold $${
                       trade.direction === 'Long' ? 'text-emerald-400' : 'text-orange-400'
                     }`}
                   >
@@ -227,11 +222,30 @@ export default function TradeDetailsPage() {
               </div>
 
               <button
-                onClick={() => handleImport(trade)}
-                disabled={isImporting}
-                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => handleSaveTrade(trade)}
+                disabled={isSaved}
+                className={`mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isSaved
+                    ? 'bg-slate-600 text-slate-300'
+                    : 'bg-emerald-500 text-slate-950 hover:bg-emerald-600'
+                }`}
               >
-                {isImporting ? 'Importing...' : 'Import to Sanity Draft'}
+                {isSaved ? (
+                  <>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <path
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    Saved
+                  </>
+                ) : (
+                  'Save Trade'
+                )}
               </button>
             </div>
           )
