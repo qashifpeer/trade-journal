@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { sanityClient } from '@/src//lib/sanity.client'
+import { writeClient } from '@/src//lib/sanity.client'
 
 export async function POST(request: Request) {
   try {
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const doc = await sanityClient.create({
+    const doc = await writeClient.create({
       _type: 'tradeLog',
       date: body.date,
       tradeType: body.tradeType,
