@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-type FyersTrade = {
+type RawFyersTrade = {
   clientId?: string
   exchange?: number
   fyToken?: string
@@ -21,13 +21,142 @@ type FyersTrade = {
   orderType?: number
   orderTag?: string
 }
+
 type RawFyersTradesResponse = {
-  ok?: boolean
-  s?: string
   code?: number
   message?: string
-  tradeBook?: FyersTrade[]
-  [key: string]: unknown
+  s?: string
+  tradeBook?: RawFyersTrade[]
+}
+
+type OpenLot = {
+  qty: number
+  price: number
+  time: string
+  side: number
+}
+
+type MergedTrade = {
+  id: string
+  symbol: string
+  direction: 'Long' | 'Short'
+  quantity: number
+  buyPrice: number
+  sellPrice: number
+  buyTime: string
+  sellTime: string
+  totalPnl: number
+}
+
+function parseFyersDate(value?: string) {
+  if (!value) return new Date(0)
+  const [datePart, timePart] = value.split(' ')
+  if (!datePart || !timePart) return new Date(value)
+
+  const [day, monStr, year] = datePart.split('-')
+  const months: Record<string, number> = {
+    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+  }
+
+  return new Date(
+    Number(year),
+    months[monStr],
+    Number(day),
+    ...timePart.split(':').map(Number)
+  )
+}
+
+function getDirection(symbol: string): 'Long' | 'Short' {
+  return symbol.endsWith('PE') ? 'Short' : 'Long'
+}
+
+function mergeTrades(rawTrades: RawFyersTrade[]): MergedTrade[] {
+  const grouped = new Map<string, RawFyersTrade[]>()
+
+  for (const trade of rawTrades) {
+    const symbol = trade.symbol || ''
+    if (!grouped.has(symbol)) grouped.set(symbol, [])
+    grouped.get(symbol)!.push(trade)
+  }
+
+  const merged: MergedTrade[] = []
+
+  for (const [symbol, trades] of grouped.entries()) {
+    const sorted = [...trades].sort(
+      (a, b) =>
+        parseFyersDate(a.orderDateTime).getTime() -
+        parseFyersDate(b.orderDateTime).getTime()
+    )
+
+    const openLots: OpenLot[] = []
+
+    for (const trade of sorted) {
+      const qty = trade.tradedQty ?? 0
+      const price = trade.tradePrice ?? 0
+      const time = trade.orderDateTime ?? ''
+      const side = trade.side ?? 0
+
+      if (!qty || !price || !side) continue
+
+      if (openLots.length === 0) {
+        openLots.push({ qty, price, time, side })
+        continue
+      }
+
+      let remainingQty = qty
+
+      while (remainingQty > 0 && openLots.length > 0) {
+        const firstLot = openLots[0]
+
+        if (firstLot.side === side) {
+          break
+        }
+
+        const matchedQty = Math.min(firstLot.qty, remainingQty)
+
+        const buyPrice = side === -1 ? firstLot.price : price
+        const sellPrice = side === -1 ? price : firstLot.price
+        const buyTime = side === -1 ? firstLot.time : time
+        const sellTime = side === -1 ? time : firstLot.time
+
+        const totalPnl =
+          symbol.endsWith('PE')
+            ? (buyPrice - sellPrice) * matchedQty
+            : (sellPrice - buyPrice) * matchedQty
+
+        merged.push({
+          id: `${symbol}-${buyTime}-${sellTime}-${matchedQty}`,
+          symbol,
+          direction: getDirection(symbol),
+          quantity: matchedQty,
+          buyPrice,
+          sellPrice,
+          buyTime,
+          sellTime,
+          totalPnl,
+        })
+
+        firstLot.qty -= matchedQty
+        remainingQty -= matchedQty
+
+        if (firstLot.qty === 0) {
+          openLots.shift()
+        }
+      }
+
+      if (remainingQty > 0) {
+        openLots.push({
+          qty: remainingQty,
+          price,
+          time,
+          side,
+        })
+      }
+    }
+  }
+
+  return merged
 }
 
 export async function GET(request: NextRequest) {
@@ -59,16 +188,7 @@ export async function GET(request: NextRequest) {
     })
 
     const rawText = await fyersRes.text()
-    let data: RawFyersTradesResponse = {}
-
-    try {
-      data = rawText ? JSON.parse(rawText) : {}
-    } catch {
-      return NextResponse.json(
-        { success: false, trades: [], error: 'Invalid JSON from FYERS' },
-        { status: 502 }
-      )
-    }
+    const data: RawFyersTradesResponse = rawText ? JSON.parse(rawText) : {}
 
     if (!fyersRes.ok) {
       return NextResponse.json(
@@ -81,25 +201,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Normalize FYERS field names to match your frontend expectations
     const rawTrades = Array.isArray(data.tradeBook) ? data.tradeBook : []
-    
-    const trades = rawTrades.map((t) => ({
-      id: t.tradeNumber || t.orderNumber || '',
-      orderId: t.orderNumber || '',
-      symbol: t.symbol || '',
-      side: t.side ?? null,
-      qty: t.tradedQty ?? null,  // Map tradedQty to qty
-      tradedPrice: t.tradePrice ?? null,  // Map tradePrice to tradedPrice
-      orderDateTime: t.orderDateTime || '',
-      tradeValue: t.tradeValue ?? null,
-      productType: t.productType || '',
-    }))
+    const mergedTrades = mergeTrades(rawTrades)
 
     return NextResponse.json({
       success: true,
-      count: trades.length,
-      trades,
+      count: mergedTrades.length,
+      trades: mergedTrades,
     })
   } catch (error) {
     return NextResponse.json(
