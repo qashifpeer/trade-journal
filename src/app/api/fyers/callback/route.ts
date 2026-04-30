@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
     response.cookies.set('fyers_access_token', tokenData.access_token, {
       httpOnly: true,
       secure: true,
-      sameSite: 'lax',
+      sameSite: 'none',
       path: '/',
       maxAge: 60 * 60 * 12,
     })

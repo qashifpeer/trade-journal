@@ -6,12 +6,12 @@ export async function GET() {
 
   if (!clientId || !redirectUri) {
     return NextResponse.json(
-      { error: 'Missing FYERS_CLIENT_ID or FYERS_REDIRECT_URI' },
+      { error: 'Missing FYERS_APP_ID or FYERS_REDIRECT_URI' },
       { status: 500 }
     )
   }
 
-  const authUrl =
+    const authUrl =
     `https://api-t1.fyers.in/api/v3/generate-authcode?client_id=${encodeURIComponent(clientId)}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&response_type=code&state=trade-journal`
