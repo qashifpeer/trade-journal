@@ -1,9 +1,9 @@
 import crypto from 'crypto'
 import { cookies } from 'next/headers'
 
-type RefreshResponse = {
+type FyersTokenPayload = {
   s?: string
-  code?: number
+  code?: number | string
   message?: string
   access_token?: string
   refresh_token?: string
@@ -18,14 +18,24 @@ type RefreshResponse = {
   [key: string]: unknown
 }
 
-function getAppIdHash(appId: string, secretKey: string) {
+const ACCESS_COOKIE = 'fyers_access_token'
+const REFRESH_COOKIE = 'fyers_refresh_token'
+
+export const fyersCookieOptions = {
+  httpOnly: true,
+  secure: true,
+  sameSite: 'lax' as const,
+  path: '/',
+}
+
+export function getAppIdHash(appId: string, secretKey: string) {
   return crypto
     .createHash('sha256')
     .update(`${appId}:${secretKey}`)
     .digest('hex')
 }
 
-function extractTokens(data: RefreshResponse) {
+export function extractTokens(data: FyersTokenPayload) {
   const accessToken =
     data.access_token ||
     data.accessToken ||
@@ -44,52 +54,43 @@ function extractTokens(data: RefreshResponse) {
 }
 
 export async function getStoredFyersTokens() {
-  const cookieStore = await cookies()
+  const store = await cookies()
 
-  return {
-    accessToken: cookieStore.get('fyers_access_token')?.value || '',
-    refreshToken: cookieStore.get('fyers_refresh_token')?.value || '',
-  }
+  const accessToken = store.get(ACCESS_COOKIE)?.value || ''
+  const refreshToken = store.get(REFRESH_COOKIE)?.value || ''
+
+  return { accessToken, refreshToken }
 }
 
-export async function setFyersTokens(accessToken: string, refreshToken?: string) {
-  const cookieStore = await cookies()
+export async function setStoredFyersTokens(params: {
+  accessToken: string
+  refreshToken?: string
+}) {
+  const store = await cookies()
 
-  cookieStore.set('fyers_access_token', accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
+  store.set(ACCESS_COOKIE, params.accessToken, {
+    ...fyersCookieOptions,
     maxAge: 60 * 60 * 12,
   })
 
-  if (refreshToken) {
-    cookieStore.set('fyers_refresh_token', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
+  if (params.refreshToken) {
+    store.set(REFRESH_COOKIE, params.refreshToken, {
+      ...fyersCookieOptions,
       maxAge: 60 * 60 * 24 * 15,
     })
   }
 }
 
-export async function clearFyersTokens() {
-  const cookieStore = await cookies()
+export async function clearStoredFyersTokens() {
+  const store = await cookies()
 
-  cookieStore.set('fyers_access_token', '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
+  store.set(ACCESS_COOKIE, '', {
+    ...fyersCookieOptions,
     maxAge: 0,
   })
 
-  cookieStore.set('fyers_refresh_token', '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
+  store.set(REFRESH_COOKIE, '', {
+    ...fyersCookieOptions,
     maxAge: 0,
   })
 }
@@ -130,16 +131,22 @@ export async function refreshFyersAccessToken() {
 
   const raw = await refreshRes.text()
 
-  let refreshData: RefreshResponse
+  let refreshData: FyersTokenPayload
   try {
     refreshData = raw ? JSON.parse(raw) : {}
   } catch {
     throw new Error('FYERS returned non-JSON refresh response')
   }
 
-  const tokens = extractTokens(refreshData)
+  const { accessToken, refreshToken: newRefreshToken } = extractTokens(refreshData)
 
-  if (!refreshRes.ok || !tokens.accessToken) {
+  console.log('FYERS refresh response:', refreshData)
+  console.log('FYERS refresh extracted:', {
+    hasAccessToken: !!accessToken,
+    hasRefreshToken: !!newRefreshToken,
+  })
+
+  if (!refreshRes.ok || !accessToken) {
     throw new Error(
       typeof refreshData.message === 'string'
         ? refreshData.message
@@ -147,7 +154,10 @@ export async function refreshFyersAccessToken() {
     )
   }
 
-  await setFyersTokens(tokens.accessToken, tokens.refreshToken || refreshToken)
+  await setStoredFyersTokens({
+    accessToken,
+    refreshToken: newRefreshToken || refreshToken,
+  })
 
-  return tokens.accessToken
+  return accessToken
 }
