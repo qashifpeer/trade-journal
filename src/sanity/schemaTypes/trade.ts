@@ -86,6 +86,31 @@ export const trade = defineType({
       name: 'setup',
       title: 'Setup / Strategy',
       type: 'string',
+      options: {
+        list: [
+          { title: 'Breakout', value: 'Breakout' },
+          { title: 'FIB Retracement', value: 'FIB Retracement' },
+          { title: 'Reversal', value: 'Reversal' },
+          { title: 'Pullback', value: 'Pullback' },
+          { title: 'News Based', value: 'News Based' },
+          { title: 'Trend', value: 'Trend' },
+          { title: 'Other', value: 'Other' },
+        ],
+      },
+    }),
+
+    defineField({
+      name: 'outcome',
+      title: 'Outcome',
+      type: 'string',
+      options: {
+        list: [
+          { title: 'Mistake', value: 'mistake' },
+          { title: 'Followed Plan', value: 'followed plan' },
+          { title: 'Full Success', value: 'full success' },
+          { title: 'Partial Success', value: 'partial success' },
+        ],
+      },
     }),
 
     defineField({
@@ -159,9 +184,10 @@ export const trade = defineType({
       title: 'symbol',
       subtitle: 'direction',
       pnl: 'pnl',
-      date: 'date',
+      date: 'tradeDate',
+      outcome: 'outcome',
     },
-    prepare({ title, subtitle, pnl, date }) {
+    prepare({ title, subtitle, pnl, date, outcome }) {
       const pnlText =
         typeof pnl === 'number'
           ? `${pnl >= 0 ? '+' : '-'}₹${Math.abs(pnl).toFixed(2)}`
@@ -169,7 +195,12 @@ export const trade = defineType({
 
       return {
         title: title || 'Untitled Trade',
-        subtitle: `${subtitle || 'No direction'} • ${pnlText} • ${date || 'No date'}`,
+        subtitle: [
+          subtitle || 'No direction',
+          pnlText,
+          date || 'No date',
+          outcome || 'No outcome',
+        ].join(' • '),
       }
     },
   },

@@ -33,6 +33,16 @@ function parseFyersDateToISO(fyersDate: string): string {
   return `${year}-${month}-${day.padStart(2, "0")}`;
 }
 
+const STRATEGY_OPTIONS = [
+  "Breakout",
+  "FIB Retracement",
+  "Reversal",
+  "Pullback",
+  "News Based",
+  "Trend",
+  "Other",
+];
+
 function SaveTradeForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -59,6 +69,7 @@ function SaveTradeForm() {
   const [lessons, setLessons] = useState("");
   const [emotionalState, setEmotionalState] = useState("");
   const [marketCondition, setMarketCondition] = useState("");
+  const [outcome, setOutcome] = useState('')
 
   const handleSave = async () => {
     setLoading(true);
@@ -88,9 +99,11 @@ function SaveTradeForm() {
         lessons,
         emotionalState,
         marketCondition,
+        outcome,
+        tradeDate: parseFyersDateToISO(buyTime),
 
         // Metadata
-        tradeDate: parseFyersDateToISO(buyTime),
+        date: parseFyersDateToISO(buyTime),
         createdAt: new Date().toISOString(),
       };
 
@@ -145,7 +158,7 @@ function SaveTradeForm() {
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm text-slate-400">Symbol</label>
-              <p className="mt-1 font-mono text-lg">{symbol}</p>
+              <p className="mt-1 break-all font-mono text-lg">{symbol}</p>
             </div>
 
             <div>
@@ -202,17 +215,27 @@ function SaveTradeForm() {
           <h2 className="mb-4 text-lg font-semibold">Additional Details</h2>
 
           <div className="space-y-4">
+            {/* Strategy Selection - Button Grid */}
             <div>
-              <label className="block text-sm font-medium text-slate-300">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
                 Setup/Strategy
               </label>
-              <input
-                type="text"
-                value={setup}
-                onChange={(e) => setSetup(e.target.value)}
-                placeholder="e.g., Breakout, Support/Resistance, Momentum"
-                className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
-              />
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {STRATEGY_OPTIONS.map((strategy) => (
+                  <button
+                    key={strategy}
+                    type="button"
+                    onClick={() => setSetup(strategy)}
+                    className={`rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                      setup === strategy
+                        ? "bg-blue-500 text-white ring-2 ring-blue-400"
+                        : "bg-slate-700 text-slate-300 hover:bg-blue-500/80 hover:text-white"
+                    }`}
+                  >
+                    {strategy}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>

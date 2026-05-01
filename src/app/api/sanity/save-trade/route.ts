@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
       emotionalState,
       marketCondition,
       tradeDate,
+      outcome,
     } = body
 
     // Create Sanity document
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
       emotionalState,
       marketCondition,
       tradeDate,
+      outcome,
       createdAt: new Date().toISOString(),
     })
 
