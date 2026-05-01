@@ -4,9 +4,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
 type MergedTrade = {
   id: string
   symbol: string
@@ -24,6 +21,7 @@ type TradesApiResponse = {
   count?: number
   trades?: MergedTrade[]
   error?: string
+  debug?: unknown
 }
 
 export default function TradeDetailsPage() {
@@ -44,6 +42,9 @@ export default function TradeDetailsPage() {
         const res = await fetch('/api/fyers/trades', {
           credentials: 'include',
           cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-store',
+          },
         })
 
         const data: TradesApiResponse = await res.json()
@@ -51,6 +52,7 @@ export default function TradeDetailsPage() {
         if (cancelled) return
 
         if (!res.ok || !data.success) {
+          console.error('FYERS trades error:', data)
           setError(data.error || 'Failed to load FYERS trades')
           return
         }
@@ -69,7 +71,6 @@ export default function TradeDetailsPage() {
 
     loadTrades()
 
-    // Load saved trades from localStorage
     const saved = localStorage.getItem('savedTrades')
     if (saved) {
       try {
@@ -83,7 +84,6 @@ export default function TradeDetailsPage() {
   }, [])
 
   const handleSaveTrade = (trade: MergedTrade) => {
-    // Encode trade data in URL params
     const params = new URLSearchParams({
       id: trade.id,
       symbol: trade.symbol,
@@ -100,12 +100,8 @@ export default function TradeDetailsPage() {
   }
 
   const formatPrice = (value: number) => `₹${value.toFixed(2)}`
-
-  const formatPnl = (value: number) =>
-    `${value >= 0 ? '+' : '-'}₹${Math.abs(value).toFixed(2)}`
-
-  const pnlColor = (value: number) =>
-    value >= 0 ? 'text-emerald-400' : 'text-red-400'
+  const formatPnl = (value: number) => `${value >= 0 ? '+' : '-'}₹${Math.abs(value).toFixed(2)}`
+  const pnlColor = (value: number) => (value >= 0 ? 'text-emerald-400' : 'text-red-400')
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 text-white md:px-6">
@@ -171,7 +167,7 @@ export default function TradeDetailsPage() {
                     Direction
                   </p>
                   <p
-                    className={`mt-1 font-semibold $${
+                    className={`mt-1 font-semibold ${
                       trade.direction === 'Long' ? 'text-emerald-400' : 'text-orange-400'
                     }`}
                   >
@@ -233,22 +229,7 @@ export default function TradeDetailsPage() {
                     : 'bg-emerald-500 text-slate-950 hover:bg-emerald-600'
                 }`}
               >
-                {isSaved ? (
-                  <>
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24">
-                      <path
-                        stroke="currentColor"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    Saved
-                  </>
-                ) : (
-                  'Save Trade'
-                )}
+                {isSaved ? 'Saved' : 'Save Trade'}
               </button>
             </div>
           )
