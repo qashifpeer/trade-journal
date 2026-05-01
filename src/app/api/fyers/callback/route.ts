@@ -1,8 +1,11 @@
-// src/app/api/fyers/callback/route.ts
-import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  extractTokens,
+  fyersCookieOptions,
+  getAppIdHash,
+} from '@/src/lib/fyers-auth'
 
-type FyersTokenResponse = {
+type FyersTokenPayload = {
   s?: string
   code?: number | string
   message?: string
@@ -19,31 +22,6 @@ type FyersTokenResponse = {
   [key: string]: unknown
 }
 
-function getAppIdHash(appId: string, secretKey: string) {
-  return crypto
-    .createHash('sha256')
-    .update(`${appId}:${secretKey}`)
-    .digest('hex')
-}
-
-function extractTokens(tokenData: FyersTokenResponse) {
-  const accessToken =
-    tokenData.access_token ||
-    tokenData.accessToken ||
-    tokenData.data?.access_token ||
-    tokenData.data?.accessToken ||
-    ''
-
-  const refreshToken =
-    tokenData.refresh_token ||
-    tokenData.refreshToken ||
-    tokenData.data?.refresh_token ||
-    tokenData.data?.refreshToken ||
-    ''
-
-  return { accessToken, refreshToken }
-}
-
 export async function GET(request: NextRequest) {
   try {
     const authCode = request.nextUrl.searchParams.get('auth_code')
@@ -55,9 +33,9 @@ export async function GET(request: NextRequest) {
         {
           success: false,
           error: 'Missing or invalid auth_code response from FYERS',
-          fyersStatus: status,
-          fyersCode: code,
-          authCodePresent: Boolean(authCode),
+          status,
+          code,
+          authCodePresent: !!authCode,
         },
         { status: 400 }
       )
@@ -94,7 +72,7 @@ export async function GET(request: NextRequest) {
 
     const raw = await tokenRes.text()
 
-    let tokenData: FyersTokenResponse
+    let tokenData: FyersTokenPayload
     try {
       tokenData = raw ? JSON.parse(raw) : {}
     } catch {
@@ -134,22 +112,22 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(redirectUrl, { status: 302 })
 
     response.cookies.set('fyers_access_token', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
+      ...fyersCookieOptions,
       maxAge: 60 * 60 * 12,
     })
 
     if (refreshToken) {
       response.cookies.set('fyers_refresh_token', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
+        ...fyersCookieOptions,
         maxAge: 60 * 60 * 24 * 15,
       })
     }
+
+    console.log('Set-Cookie callback complete:', {
+      accessSet: !!accessToken,
+      refreshSet: !!refreshToken,
+      redirectTo: redirectUrl.toString(),
+    })
 
     return response
   } catch (error) {
