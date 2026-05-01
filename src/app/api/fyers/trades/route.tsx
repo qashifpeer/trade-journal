@@ -1,4 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import {
+  clearFyersTokens,
+  getStoredFyersTokens,
+  refreshFyersAccessToken,
+} from '@/src/lib/fyers-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +32,7 @@ type RawFyersTradesResponse = {
   message?: string
   s?: string
   tradeBook?: RawFyersTrade[]
+  [key: string]: unknown
 }
 
 type OpenLot = {
@@ -50,13 +56,24 @@ type MergedTrade = {
 
 function parseFyersDate(value?: string) {
   if (!value) return new Date(0)
+
   const [datePart, timePart] = value.split(' ')
   if (!datePart || !timePart) return new Date(value)
 
   const [day, monStr, year] = datePart.split('-')
   const months: Record<string, number> = {
-    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+    Jan: 0,
+    Feb: 1,
+    Mar: 2,
+    Apr: 3,
+    May: 4,
+    Jun: 5,
+    Jul: 6,
+    Aug: 7,
+    Sep: 8,
+    Oct: 9,
+    Nov: 10,
+    Dec: 11,
   }
 
   return new Date(
@@ -76,6 +93,7 @@ function mergeTrades(rawTrades: RawFyersTrade[]): MergedTrade[] {
 
   for (const trade of rawTrades) {
     const symbol = trade.symbol || ''
+    if (!symbol) continue
     if (!grouped.has(symbol)) grouped.set(symbol, [])
     grouped.get(symbol)!.push(trade)
   }
@@ -109,21 +127,16 @@ function mergeTrades(rawTrades: RawFyersTrade[]): MergedTrade[] {
       while (remainingQty > 0 && openLots.length > 0) {
         const firstLot = openLots[0]
 
-        if (firstLot.side === side) {
-          break
-        }
+        if (firstLot.side === side) break
 
         const matchedQty = Math.min(firstLot.qty, remainingQty)
 
-        const buyPrice = side === -1 ? firstLot.price : price
-        const sellPrice = side === -1 ? price : firstLot.price
-        const buyTime = side === -1 ? firstLot.time : time
-        const sellTime = side === -1 ? time : firstLot.time
+        const buyPrice = firstLot.side === 1 ? firstLot.price : price
+        const sellPrice = firstLot.side === -1 ? firstLot.price : price
+        const buyTime = firstLot.side === 1 ? firstLot.time : time
+        const sellTime = firstLot.side === -1 ? firstLot.time : time
 
-        const totalPnl =
-          symbol.endsWith('PE')
-            ? (buyPrice - sellPrice) * matchedQty
-            : (sellPrice - buyPrice) * matchedQty
+        const totalPnl = (sellPrice - buyPrice) * matchedQty
 
         merged.push({
           id: `${symbol}-${buyTime}-${sellTime}-${matchedQty}`,
@@ -159,62 +172,123 @@ function mergeTrades(rawTrades: RawFyersTrade[]): MergedTrade[] {
   return merged
 }
 
-export async function GET(request: NextRequest) {
+async function fetchTradebook(accessToken: string) {
+  const tradebookRes = await fetch('https://api-t1.fyers.in/api/v3/tradebook', {
+    method: 'GET',
+    headers: {
+      Authorization: accessToken,
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  })
+
+  const raw = await tradebookRes.text()
+
+  let data: RawFyersTradesResponse
   try {
-    const accessToken = request.cookies.get('fyers_access_token')?.value
-    const appId = process.env.FYERS_APP_ID
+    data = raw ? JSON.parse(raw) : {}
+  } catch {
+    throw new Error('FYERS returned non-JSON tradebook response')
+  }
+
+  return {
+    ok: tradebookRes.ok,
+    status: tradebookRes.status,
+    data,
+  }
+}
+
+export async function GET() {
+  try {
+    const { accessToken } = await getStoredFyersTokens()
 
     if (!accessToken) {
-      return NextResponse.json(
-        { success: false, trades: [], error: 'Missing FYERS access token' },
-        { status: 401 }
-      )
+      try {
+        const refreshedAccessToken = await refreshFyersAccessToken()
+        const retryResult = await fetchTradebook(refreshedAccessToken)
+
+        if (!retryResult.ok) {
+          await clearFyersTokens()
+          return NextResponse.json(
+            {
+              success: false,
+              trades: [],
+              error: retryResult.data.message || 'FYERS session expired. Please reconnect.',
+            },
+            { status: 401 }
+          )
+        }
+
+        const rawTrades = Array.isArray(retryResult.data.tradeBook)
+          ? retryResult.data.tradeBook
+          : []
+
+        return NextResponse.json({
+          success: true,
+          count: mergeTrades(rawTrades).length,
+          trades: mergeTrades(rawTrades),
+        })
+      } catch {
+        await clearFyersTokens()
+        return NextResponse.json(
+          {
+            success: false,
+            trades: [],
+            error: 'FYERS session expired. Please reconnect your broker.',
+          },
+          { status: 401 }
+        )
+      }
     }
 
-    if (!appId) {
-      return NextResponse.json(
-        { success: false, trades: [], error: 'Missing FYERS_APP_ID' },
-        { status: 500 }
-      )
+    let result = await fetchTradebook(accessToken)
+
+    if (!result.ok) {
+      try {
+        const refreshedAccessToken = await refreshFyersAccessToken()
+        result = await fetchTradebook(refreshedAccessToken)
+      } catch {
+        await clearFyersTokens()
+        return NextResponse.json(
+          {
+            success: false,
+            trades: [],
+            error: 'FYERS session expired. Please reconnect your broker.',
+          },
+          { status: 401 }
+        )
+      }
     }
 
-    const fyersRes = await fetch('https://api-t1.fyers.in/api/v3/tradebook', {
-      method: 'GET',
-      headers: {
-        Authorization: `${appId}:${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store',
-    })
-
-    const rawText = await fyersRes.text()
-    const data: RawFyersTradesResponse = rawText ? JSON.parse(rawText) : {}
-
-    if (!fyersRes.ok) {
+    if (!result.ok) {
+      await clearFyersTokens()
       return NextResponse.json(
         {
           success: false,
           trades: [],
-          error: data.message || 'Failed to fetch FYERS tradebook',
+          error: result.data.message || 'Failed to fetch FYERS tradebook',
         },
-        { status: fyersRes.status }
+        { status: 401 }
       )
     }
 
-    const rawTrades = Array.isArray(data.tradeBook) ? data.tradeBook : []
-    const mergedTrades = mergeTrades(rawTrades)
+    const rawTrades = Array.isArray(result.data.tradeBook)
+      ? result.data.tradeBook
+      : []
+
+    const trades = mergeTrades(rawTrades)
 
     return NextResponse.json({
       success: true,
-      count: mergedTrades.length,
-      trades: mergedTrades,
+      count: trades.length,
+      trades,
     })
   } catch (error) {
     return NextResponse.json(
       {
         success: false,
         trades: [],
-        error: error instanceof Error ? error.message : 'Server error',
+        error: error instanceof Error ? error.message : 'Unexpected server error',
       },
       { status: 500 }
     )

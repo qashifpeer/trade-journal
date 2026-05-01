@@ -5,7 +5,7 @@ export default function HomePage() {
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col px-4 py-10 md:px-6 md:py-16">
       <div className="mb-8 space-y-3">
         <span className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-sm text-cyan-300">
-          Next.js + Sanity Trade Logger
+          Trade Journal by Qashif Peer
         </span>
 
         <h1 className="text-3xl font-bold tracking-tight text-white md:text-5xl">
