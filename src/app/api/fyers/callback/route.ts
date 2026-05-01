@@ -1,9 +1,10 @@
+// src/app/api/fyers/callback/route.ts
 import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 
 type FyersTokenResponse = {
   s?: string
-  code?: number
+  code?: number | string
   message?: string
   access_token?: string
   refresh_token?: string
@@ -109,11 +110,19 @@ export async function GET(request: NextRequest) {
 
     const { accessToken, refreshToken } = extractTokens(tokenData)
 
+    console.log('FYERS callback token response:', tokenData)
+    console.log('Extracted tokens:', {
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken,
+      accessPreview: accessToken ? accessToken.slice(0, 25) : '',
+      refreshPreview: refreshToken ? refreshToken.slice(0, 25) : '',
+    })
+
     if (!tokenRes.ok || !accessToken) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Failed to exchange auth_code with FYERS',
+          error: 'Failed to exchange auth_code',
           fyersHttpStatus: tokenRes.status,
           fyersResponse: tokenData,
         },
