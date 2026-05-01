@@ -1,29 +1,17 @@
 import { NextResponse } from 'next/server'
 import {
-  getStoredFyersTokens,
-  refreshFyersAccessToken,
+  clearStoredFyersAccessToken,
+  getStoredFyersAccessToken,
 } from '@/src/lib/fyers-auth'
 
 export const dynamic = 'force-dynamic'
 
 type RawFyersTrade = {
-  clientId?: string
-  exchange?: number
-  fyToken?: string
-  orderNumber?: string
-  exchangeOrderNo?: string
-  tradeNumber?: string
-  tradePrice?: number
-  segment?: number
-  productType?: string
-  tradedQty?: number
   symbol?: string
-  row?: number
+  tradedQty?: number
+  tradePrice?: number
   orderDateTime?: string
-  tradeValue?: number
   side?: number
-  orderType?: number
-  orderTag?: string
 }
 
 type RawFyersTradesResponse = {
@@ -172,8 +160,6 @@ function mergeTrades(rawTrades: RawFyersTrade[]): MergedTrade[] {
 }
 
 async function fetchTradebook(accessToken: string) {
-  console.log('Fetching tradebook with token:', accessToken ? accessToken.slice(0, 20) : 'NO_TOKEN')
-
   const res = await fetch('https://api-t1.fyers.in/api/v3/tradebook', {
     method: 'GET',
     headers: {
@@ -192,9 +178,6 @@ async function fetchTradebook(accessToken: string) {
     throw new Error('FYERS returned non-JSON tradebook response')
   }
 
-  console.log('FYERS tradebook status:', res.status)
-  console.log('FYERS tradebook response:', data)
-
   return {
     ok: res.ok,
     status: res.status,
@@ -204,56 +187,41 @@ async function fetchTradebook(accessToken: string) {
 
 export async function GET() {
   try {
-    const { accessToken, refreshToken } = await getStoredFyersTokens()
+    const accessToken = await getStoredFyersAccessToken()
 
-    console.log('Trades route cookies:', {
+    console.log('Trades route access token:', {
       hasAccessToken: !!accessToken,
-      hasRefreshToken: !!refreshToken,
       accessPreview: accessToken ? accessToken.slice(0, 20) : '',
-      refreshPreview: refreshToken ? refreshToken.slice(0, 20) : '',
     })
 
-    let activeAccessToken = accessToken
-
-    if (!activeAccessToken && refreshToken) {
-      console.log('No access token, trying refresh token flow')
-      activeAccessToken = await refreshFyersAccessToken()
-    }
-
-    if (!activeAccessToken) {
+    if (!accessToken) {
       return NextResponse.json(
         {
           success: false,
           trades: [],
-          error: 'No FYERS access token found. Please reconnect your broker.',
+          error: 'FYERS session expired. Please reconnect your broker.',
           debug: {
             step: 'missing_access_token',
-            hasRefreshToken: !!refreshToken,
           },
         },
         { status: 401 }
       )
     }
 
-    let result = await fetchTradebook(activeAccessToken)
-
-    if (!result.ok && refreshToken) {
-      console.log('Tradebook failed, trying refresh token flow')
-      activeAccessToken = await refreshFyersAccessToken()
-      result = await fetchTradebook(activeAccessToken)
-    }
+    const result = await fetchTradebook(accessToken)
 
     if (!result.ok) {
+      await clearStoredFyersAccessToken()
+
       return NextResponse.json(
         {
           success: false,
           trades: [],
-          error: result.data.message || 'Failed to fetch FYERS tradebook',
+          error: 'FYERS session expired. Please reconnect your broker.',
           debug: {
             step: 'tradebook_failed',
             status: result.status,
             fyersResponse: result.data,
-            hasRefreshToken: !!refreshToken,
           },
         },
         { status: 401 }
@@ -277,10 +245,6 @@ export async function GET() {
         success: false,
         trades: [],
         error: error instanceof Error ? error.message : 'Unexpected server error',
-        debug: {
-          step: 'catch_all',
-          details: error instanceof Error ? error.message : String(error),
-        },
       },
       { status: 500 }
     )
