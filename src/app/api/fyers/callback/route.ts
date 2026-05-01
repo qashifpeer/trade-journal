@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  extractTokens,
+  extractAccessToken,
   fyersCookieOptions,
   getAppIdHash,
 } from '@/src/lib/fyers-auth'
@@ -10,14 +10,10 @@ type FyersTokenPayload = {
   code?: number | string
   message?: string
   access_token?: string
-  refresh_token?: string
   accessToken?: string
-  refreshToken?: string
   data?: {
     access_token?: string
-    refresh_token?: string
     accessToken?: string
-    refreshToken?: string
   }
   [key: string]: unknown
 }
@@ -86,14 +82,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { accessToken, refreshToken } = extractTokens(tokenData)
+    const accessToken = extractAccessToken(tokenData)
 
     console.log('FYERS callback token response:', tokenData)
-    console.log('Extracted tokens:', {
+    console.log('Extracted access token:', {
       hasAccessToken: !!accessToken,
-      hasRefreshToken: !!refreshToken,
       accessPreview: accessToken ? accessToken.slice(0, 25) : '',
-      refreshPreview: refreshToken ? refreshToken.slice(0, 25) : '',
     })
 
     if (!tokenRes.ok || !accessToken) {
@@ -116,16 +110,8 @@ export async function GET(request: NextRequest) {
       maxAge: 60 * 60 * 12,
     })
 
-    if (refreshToken) {
-      response.cookies.set('fyers_refresh_token', refreshToken, {
-        ...fyersCookieOptions,
-        maxAge: 60 * 60 * 24 * 15,
-      })
-    }
-
     console.log('Set-Cookie callback complete:', {
       accessSet: !!accessToken,
-      refreshSet: !!refreshToken,
       redirectTo: redirectUrl.toString(),
     })
 
