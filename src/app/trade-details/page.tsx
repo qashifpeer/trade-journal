@@ -4,6 +4,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 type MergedTrade = {
   id: string
   symbol: string
