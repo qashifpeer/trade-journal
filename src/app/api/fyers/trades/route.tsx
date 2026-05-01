@@ -4,7 +4,7 @@ import {
   clearFyersTokens,
   getStoredFyersTokens,
   refreshFyersAccessToken,
-} from '@/lib/fyers-auth'
+} from '@/src/lib/fyers-auth'
 
 export const dynamic = 'force-dynamic'
 
