@@ -1,0 +1,49 @@
+name: Deploy to Oracle VM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      - name: Prepare standalone package
+        run: |
+          cp -r public .next/standalone/
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.OCI_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ secrets.OCI_PORT }} ${{ secrets.OCI_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Upload build to server
+        run: |
+          ssh -p ${{ secrets.OCI_PORT }} ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }} "rm -rf /tmp/trade-journal-upload && mkdir -p /tmp/trade-journal-upload"
+          scp -P ${{ secrets.OCI_PORT }} -r .next/standalone/* ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }}:/tmp/trade-journal-upload/
+
+      - name: Deploy on server
+        run: |
+          RELEASE_NAME=$(date +%Y%m%d%H%M%S)
+          ssh -p ${{ secrets.OCI_PORT }} ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }} "bash ~/apps/trade-journal/deploy.sh $RELEASE_NAME"
