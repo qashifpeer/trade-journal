@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
-import { writeClient } from '@/src//lib/sanity.client'
+import { getSanityWriteClient } from '@/src/lib/sanity.client'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   try {
@@ -11,6 +13,8 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
+
+    const writeClient = getSanityWriteClient()
 
     const doc = await writeClient.create({
       _type: 'tradeLog',
@@ -29,10 +33,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, id: doc._id })
   } catch (error) {
     console.error('SANITY SAVE ERROR:', error)
+
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : 'Failed to save trade.',
+        error: error instanceof Error ? error.message : 'Failed to save trade.',
       },
       { status: 500 }
     )
