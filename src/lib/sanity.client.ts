@@ -1,18 +1,33 @@
 import { createClient } from 'next-sanity'
 
-// Read-only client (for public data)
-export const client = createClient({
-  projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID!,
-  dataset: process.env.NEXT_PUBLIC_SANITY_DATASET!,
-  apiVersion: '2024-01-01',
-  useCdn: true, // CDN for fast reads
-})
+const projectId = process.env.NEXT_PUBLIC_SANITY_PROJECT_ID
+const dataset = process.env.NEXT_PUBLIC_SANITY_DATASET
+const apiVersion = '2024-01-01'
+const token = process.env.SANITY_API_WRITE_TOKEN
 
-// Write client (for API routes - server-side only)
-export const writeClient = createClient({
-  projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID!,
-  dataset: process.env.NEXT_PUBLIC_SANITY_DATASET!,
-  apiVersion: '2024-01-01',
-  useCdn: false, // No CDN for writes
-  token: process.env.SANITY_API_WRITE_TOKEN, // Write token
-})
+export function getSanityClient() {
+  if (!projectId || !dataset) {
+    throw new Error('Missing Sanity project configuration')
+  }
+
+  return createClient({
+    projectId,
+    dataset,
+    apiVersion,
+    useCdn: true,
+  })
+}
+
+export function getSanityWriteClient() {
+  if (!projectId || !dataset || !token) {
+    throw new Error('Missing Sanity write configuration')
+  }
+
+  return createClient({
+    projectId,
+    dataset,
+    apiVersion,
+    useCdn: false,
+    token,
+  })
+}
