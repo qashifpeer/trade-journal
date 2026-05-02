@@ -11,12 +11,12 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -25,25 +25,44 @@ jobs:
       - name: Build app
         run: npm run build
 
-      - name: Prepare standalone package
+      - name: Prepare deploy package
         run: |
-          cp -r public .next/standalone/
-          mkdir -p .next/standalone/.next
-          cp -r .next/static .next/standalone/.next/
+          rm -rf deploy-dist
+          mkdir -p deploy-dist
+          cp -r .next/standalone/* deploy-dist/
+          mkdir -p deploy-dist/.next
+          cp -r .next/static deploy-dist/.next/
+          if [ -d public ]; then cp -r public deploy-dist/; fi
+          test -f deploy-dist/server.js
 
-      - name: Setup SSH key
+      - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.OCI_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -p ${{ secrets.OCI_PORT }} ${{ secrets.OCI_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Upload build to server
+      - name: Upload package
         run: |
           ssh -p ${{ secrets.OCI_PORT }} ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }} "rm -rf /tmp/trade-journal-upload && mkdir -p /tmp/trade-journal-upload"
-          scp -P ${{ secrets.OCI_PORT }} -r .next/standalone/* ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }}:/tmp/trade-journal-upload/
+          tar -czf deploy-dist.tar.gz -C deploy-dist .
+          scp -P ${{ secrets.OCI_PORT }} deploy-dist.tar.gz ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }}:/tmp/trade-journal-upload/
 
       - name: Deploy on server
         run: |
           RELEASE_NAME=$(date +%Y%m%d%H%M%S)
-          ssh -p ${{ secrets.OCI_PORT }} ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }} "bash ~/apps/trade-journal/deploy.sh $RELEASE_NAME"
+          ssh -p ${{ secrets.OCI_PORT }} ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }} "
+            set -e
+            APP_DIR=\$HOME/apps/trade-journal
+            RELEASE_DIR=\$APP_DIR/releases/$RELEASE_NAME
+            mkdir -p \$RELEASE_DIR
+            tar -xzf /tmp/trade-journal-upload/deploy-dist.tar.gz -C \$RELEASE_DIR
+            cp \$APP_DIR/shared/.env.production \$RELEASE_DIR/.env.production
+            ln -sfn \$RELEASE_DIR \$APP_DIR/current
+            if pm2 describe trade-journal > /dev/null 2>&1; then
+              pm2 restart trade-journal --update-env
+            else
+              pm2 start \$APP_DIR/current/server.js --name trade-journal
+            fi
+            pm2 save
+          "
