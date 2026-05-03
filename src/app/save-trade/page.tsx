@@ -1,7 +1,7 @@
 // src/app/save-trade/page.tsx
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function parseFyersDateToISO(fyersDate: string): string {
@@ -43,50 +43,87 @@ const STRATEGY_OPTIONS = [
   "Other",
 ];
 
+const MISTAKE_OPTIONS = [
+  "over trading",
+  "revenge trading",
+  "fomo entry",
+  "risked too much",
+  "greedy",
+  "early exit",
+  "no clear plans",
+  "ignored stop loss",
+  "no mistake",
+];
+
+const OUTCOME_OPTIONS = [
+  { label: "Mistake", value: "mistake" },
+  { label: "Followed Plan", value: "followed plan" },
+  { label: "Full Success", value: "full success" },
+  { label: "Partial Success", value: "partial success" },
+];
+
 function SaveTradeForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const initial = useMemo(() => {
+    const quantityParam = searchParams.get("quantity");
+    const buyPriceParam = searchParams.get("buyPrice");
+    const sellPriceParam = searchParams.get("sellPrice");
+    const pnlParam = searchParams.get("totalPnl");
+
+    return {
+      tradeId: searchParams.get("id") || "",
+      symbol: searchParams.get("symbol") || "",
+      direction: searchParams.get("direction") || "",
+      quantity: quantityParam ? Number(quantityParam) : 0,
+      buyPrice: buyPriceParam ? Number(buyPriceParam) : 0,
+      sellPrice: sellPriceParam ? Number(sellPriceParam) : 0,
+      buyTime: searchParams.get("buyTime") || "",
+      sellTime: searchParams.get("sellTime") || "",
+      totalPnl: pnlParam ? Number(pnlParam) : 0,
+    };
+  }, [searchParams]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  // FYERS data from URL params
-  const [tradeId] = useState(searchParams.get("id") || "");
-  const [symbol] = useState(searchParams.get("symbol") || "");
-  const [direction] = useState(searchParams.get("direction") || "");
-  const [quantity] = useState(Number(searchParams.get("quantity")) || 0);
-  const [buyPrice] = useState(Number(searchParams.get("buyPrice")) || 0);
-  const [sellPrice] = useState(Number(searchParams.get("sellPrice")) || 0);
-  const [buyTime] = useState(searchParams.get("buyTime") || "");
-  const [sellTime] = useState(searchParams.get("sellTime") || "");
-  const [totalPnl] = useState(Number(searchParams.get("totalPnl")) || 0);
 
   // Additional fields
   const [setup, setSetup] = useState("");
   const [tags, setTags] = useState("");
   const [notes, setNotes] = useState("");
-  const [mistakes, setMistakes] = useState("");
+  const [mistakes, setMistakes] = useState<string[]>([]);
   const [lessons, setLessons] = useState("");
   const [emotionalState, setEmotionalState] = useState("");
   const [marketCondition, setMarketCondition] = useState("");
-  const [outcome, setOutcome] = useState('')
+  const [outcome, setOutcome] = useState("");
+
+  const toggleMistake = (value: string) => {
+    setMistakes((prev) =>
+      prev.includes(value)
+        ? prev.filter((m) => m !== value)
+        : [...prev, value]
+    );
+  };
 
   const handleSave = async () => {
     setLoading(true);
     setError("");
 
     try {
+      const tradeDate = parseFyersDateToISO(initial.buyTime);
+
       const tradeData = {
         // FYERS data
-        fyersTradeId: tradeId,
-        symbol,
-        direction,
-        quantity,
-        entryPrice: buyPrice,
-        exitPrice: sellPrice,
-        entryTime: buyTime,
-        exitTime: sellTime,
-        pnl: totalPnl,
+        fyersTradeId: initial.tradeId,
+        symbol: initial.symbol,
+        direction: initial.direction,
+        quantity: initial.quantity,
+        entryPrice: initial.buyPrice,
+        exitPrice: initial.sellPrice,
+        entryTime: initial.buyTime,
+        exitTime: initial.sellTime,
+        pnl: initial.totalPnl,
 
         // Additional fields
         setup,
@@ -100,10 +137,10 @@ function SaveTradeForm() {
         emotionalState,
         marketCondition,
         outcome,
-        tradeDate: parseFyersDateToISO(buyTime),
+        tradeDate,
 
         // Metadata
-        date: parseFyersDateToISO(buyTime),
+        date: tradeDate,
         createdAt: new Date().toISOString(),
       };
 
@@ -122,8 +159,10 @@ function SaveTradeForm() {
 
       // Mark as saved in localStorage
       const saved = localStorage.getItem("savedTrades");
-      const savedSet = saved ? new Set(JSON.parse(saved)) : new Set();
-      savedSet.add(tradeId);
+      const savedSet = saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+      if (initial.tradeId) {
+        savedSet.add(initial.tradeId);
+      }
       localStorage.setItem("savedTrades", JSON.stringify([...savedSet]));
 
       // Redirect back to trade-details
@@ -158,54 +197,61 @@ function SaveTradeForm() {
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm text-slate-400">Symbol</label>
-              <p className="mt-1 break-all font-mono text-lg">{symbol}</p>
+              <p className="mt-1 break-all font-mono text-lg">{initial.symbol}</p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Direction</label>
               <p
                 className={`mt-1 text-lg font-semibold ${
-                  direction === "Long" ? "text-emerald-400" : "text-orange-400"
+                  initial.direction === "Long"
+                    ? "text-emerald-400"
+                    : "text-orange-400"
                 }`}
               >
-                {direction}
+                {initial.direction}
               </p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Quantity</label>
-              <p className="mt-1 font-mono text-lg">{quantity}</p>
+              <p className="mt-1 font-mono text-lg">{initial.quantity}</p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Entry Price</label>
-              <p className="mt-1 font-mono text-lg">₹{buyPrice.toFixed(2)}</p>
+              <p className="mt-1 font-mono text-lg">
+                ₹{initial.buyPrice.toFixed(2)}
+              </p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Exit Price</label>
-              <p className="mt-1 font-mono text-lg">₹{sellPrice.toFixed(2)}</p>
+              <p className="mt-1 font-mono text-lg">
+                ₹{initial.sellPrice.toFixed(2)}
+              </p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">P&L</label>
               <p
                 className={`mt-1 font-mono text-lg font-semibold ${
-                  totalPnl >= 0 ? "text-emerald-400" : "text-red-400"
+                  initial.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"
                 }`}
               >
-                {totalPnl >= 0 ? "+" : "-"}₹{Math.abs(totalPnl).toFixed(2)}
+                {initial.totalPnl >= 0 ? "+" : "-"}₹
+                {Math.abs(initial.totalPnl).toFixed(2)}
               </p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Entry Time</label>
-              <p className="mt-1 text-sm">{buyTime}</p>
+              <p className="mt-1 text-sm">{initial.buyTime}</p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Exit Time</label>
-              <p className="mt-1 text-sm">{sellTime}</p>
+              <p className="mt-1 text-sm">{initial.sellTime}</p>
             </div>
           </div>
         </div>
@@ -217,7 +263,7 @@ function SaveTradeForm() {
           <div className="space-y-4">
             {/* Strategy Selection - Button Grid */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="mb-2 block text-sm font-medium text-slate-300">
                 Setup/Strategy
               </label>
               <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -288,6 +334,24 @@ function SaveTradeForm() {
 
             <div>
               <label className="block text-sm font-medium text-slate-300">
+                Outcome
+              </label>
+              <select
+                value={outcome}
+                onChange={(e) => setOutcome(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+              >
+                <option value="">Select...</option>
+                {OUTCOME_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300">
                 Trade Notes
               </label>
               <textarea
@@ -300,16 +364,32 @@ function SaveTradeForm() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300">
+              <label className="mb-2 block text-sm font-medium text-slate-300">
                 Mistakes
               </label>
-              <textarea
-                value={mistakes}
-                onChange={(e) => setMistakes(e.target.value)}
-                placeholder="What went wrong or could be improved?"
-                rows={3}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
-              />
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                {MISTAKE_OPTIONS.map((item) => {
+                  const selected = mistakes.includes(item);
+                  const label = item
+                    .split(" ")
+                    .map((w) => w[0].toUpperCase() + w.slice(1))
+                    .join(" ");
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => toggleMistake(item)}
+                      className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                        selected
+                          ? "bg-red-500/90 text-white ring-2 ring-red-400"
+                          : "bg-slate-700 text-slate-300 hover:bg-red-500/70 hover:text-white"
+                      }`}
+                    >
+                      <span className="truncate">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div>

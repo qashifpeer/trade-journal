@@ -5,8 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 
 const navItems = [
-  { label: 'Daily Report', href: '/daily-report' },
-  { label: 'Monthly PnL', href: '/monthly-pnl' },
+  { label: 'Dashboard', href: '/dashboard' },
   { label: 'Trade Details', href: '/trade-details' },
 ]
 
