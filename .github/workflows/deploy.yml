@@ -64,8 +64,8 @@ jobs:
             cp \$APP_DIR/shared/.env.production \$RELEASE_DIR/.env.production
             ln -sfn \$RELEASE_DIR \$APP_DIR/current
             if pm2 describe trade-journal > /dev/null 2>&1; then
-              pm2 restart trade-journal --update-env
-            else
-              pm2 start server.js --name trade-journal --cwd $APP_DIR/current            fi
+              pm2 delete trade-journal
+            fi
+            pm2 start server.js --name trade-journal --cwd \$APP_DIR/current
             pm2 save
           "
