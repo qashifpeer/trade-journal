@@ -85,10 +85,6 @@ export async function GET(request: NextRequest) {
     const accessToken = extractAccessToken(tokenData)
 
     console.log('FYERS callback token response:', tokenData)
-    console.log('Extracted access token:', {
-      hasAccessToken: !!accessToken,
-      accessPreview: accessToken ? accessToken.slice(0, 25) : '',
-    })
 
     if (!tokenRes.ok || !accessToken) {
       return NextResponse.json(
@@ -102,10 +98,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    const fullAccessToken = `${appId}:${accessToken}`
+
     const redirectUrl = new URL('/trade-details', appUrl)
     const response = NextResponse.redirect(redirectUrl, { status: 302 })
+    
 
-    response.cookies.set('fyers_access_token', accessToken, {
+    response.cookies.set('fyers_access_token', fullAccessToken, {
       ...fyersCookieOptions,
       maxAge: 60 * 60 * 12,
     })
