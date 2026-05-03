@@ -1,10 +1,13 @@
 // src/app/api/sanity/save-trade/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { writeClient } from '@/src/lib/sanity.client'
+import { getSanityWriteClient } from '@/src/lib/sanity.client'
 
+export const dynamic = 'force-dynamic'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    const writeClient = getSanityWriteClient()
+
 
     const {
       fyersTradeId,

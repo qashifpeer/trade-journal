@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
-import { writeClient } from '@/src/lib/sanity.client'
+import { getSanityWriteClient } from '@/src/lib/sanity.client'
+
+export const dynamic = 'force-dynamic'
 
 function toDateOnly(value?: string) {
   if (!value) return new Date().toISOString().split('T')[0]
@@ -27,7 +29,7 @@ export async function POST(request: Request) {
     const entryTime = toTimeOnly(body.orderDateTime)
 
     const draftId = `drafts.fyers-${brokerTradeId}`
-
+    const writeClient = getSanityWriteClient()
     const doc = await writeClient.createOrReplace({
       _id: draftId,
       _type: 'tradeLog',
