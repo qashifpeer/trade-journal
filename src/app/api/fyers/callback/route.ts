@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+
 import {
   extractAccessToken,
   fyersCookieOptions,
@@ -82,9 +84,19 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const accessToken = extractAccessToken(tokenData)
 
+    const accessToken = extractAccessToken(tokenData)
     console.log('FYERS callback token response:', tokenData)
+
+
+    //  for console purposes
+    const cookieStore = await cookies()
+    const token = cookieStore.get('fyers_access_token')?.value
+
+    console.log('Cookie debug', {
+      hasToken: !!token,
+      allCookies: cookieStore.getAll().map(c => c.name),
+    })
 
     if (!tokenRes.ok || !accessToken) {
       return NextResponse.json(
