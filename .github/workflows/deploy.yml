@@ -33,10 +33,10 @@ jobs:
         run: |
           rm -rf deploy-dist
           mkdir -p deploy-dist
-          cp -r .next/standalone/* deploy-dist/
+          cp -a .next/standalone/. deploy-dist/
           mkdir -p deploy-dist/.next
-          cp -r .next/static deploy-dist/.next/
-          if [ -d public ]; then cp -r public deploy-dist/; fi
+          cp -a .next/static deploy-dist/.next/
+          if [ -d public ]; then cp -a public deploy-dist/; fi
           test -f deploy-dist/server.js
 
       - name: Setup SSH
@@ -66,7 +66,6 @@ jobs:
             if pm2 describe trade-journal > /dev/null 2>&1; then
               pm2 restart trade-journal --update-env
             else
-              pm2 start \$APP_DIR/current/server.js --name trade-journal
-            fi
+              pm2 start server.js --name trade-journal --cwd $APP_DIR/current            fi
             pm2 save
           "
