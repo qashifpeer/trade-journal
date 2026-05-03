@@ -1,3 +1,4 @@
+// sanity/schemaTypes/trade.ts
 import { defineField, defineType } from 'sanity'
 
 export const trade = defineType({
@@ -159,8 +160,23 @@ export const trade = defineType({
     defineField({
       name: 'mistakes',
       title: 'Mistakes',
-      type: 'text',
-      rows: 4,
+      type: 'array',
+      of: [{ type: 'string' }],
+      options: {
+        list: [
+          { title: 'Over Trading', value: 'over trading' },
+          { title: 'Revenge Trading', value: 'revenge trading' },
+          { title: 'FOMO Entry', value: 'fomo entry' },
+          { title: 'Risked Too Much', value: 'risked too much' },
+          { title: 'Greedy', value: 'greedy' },
+          { title: 'Early Exit', value: 'early exit' },
+          { title: 'No Clear Plans', value: 'no clear plans' },
+          { title: 'Ignored Stop Loss', value: 'ignored stop loss' },
+          { title: 'No Mistake', value: 'no mistake' },
+        ],
+        layout: 'grid',
+      },
+      validation: (Rule) => Rule.unique(),
     }),
 
     defineField({
