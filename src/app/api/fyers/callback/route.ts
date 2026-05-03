@@ -102,11 +102,16 @@ export async function GET(request: NextRequest) {
 
     const redirectUrl = new URL('/trade-details', appUrl)
     const response = NextResponse.redirect(redirectUrl, { status: 302 })
-    
+
 
     response.cookies.set('fyers_access_token', fullAccessToken, {
       ...fyersCookieOptions,
       maxAge: 60 * 60 * 12,
+    })
+
+    console.log('Stored FYERS token preview:', {
+      startsWithAppId: fullAccessToken.startsWith(`${appId}:`),
+      preview: fullAccessToken.slice(0, 20),
     })
 
     console.log('Set-Cookie callback complete:', {
