@@ -18,7 +18,7 @@ const ACCESS_COOKIE = 'fyers_access_token'
 
 export const fyersCookieOptions = {
   httpOnly: true,
-  secure: true,
+  secure: false,
   sameSite: 'lax' as const,
   path: '/',
 }
