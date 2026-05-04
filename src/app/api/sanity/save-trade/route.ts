@@ -18,7 +18,9 @@ function invalid(message: string, details?: unknown) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as Partial<SaveTradePayload>;
+    const body = (await request.json()) as Partial<SaveTradePayload> & {
+      sanityId?: string;
+    };
 
     const requiredStringFields: (keyof SaveTradePayload)[] = [
       "fyersTradeId",
@@ -67,6 +69,8 @@ export async function POST(request: NextRequest) {
         )
       : [];
 
+    const now = new Date().toISOString();
+
     const sanityDoc = {
       _type: "trade",
       tradeDate,
@@ -87,16 +91,61 @@ export async function POST(request: NextRequest) {
       notes: body.notes || undefined,
       mistakes,
       lessons: body.lessons || undefined,
-      createdAt: body.createdAt || new Date().toISOString(),
+      isSaved: true,
+      status: "saved",
+      updatedAt: now,
     };
 
     const client = getSanityWriteClient();
-    const created = await client.create(sanityDoc);
+
+    if (body.sanityId && typeof body.sanityId === "string") {
+      const updated = await client
+        .patch(body.sanityId)
+        .set(sanityDoc)
+        .commit();
+
+      return NextResponse.json(
+        {
+          success: true,
+          tradeId: updated._id,
+          mode: "updated",
+        },
+        { status: 200 }
+      );
+    }
+
+    const existing = await client.fetch(
+      `*[_type == "trade" && fyersTradeId == $fyersTradeId][0]{ _id }`,
+      { fyersTradeId }
+    );
+
+    if (existing?._id) {
+      const updated = await client
+        .patch(existing._id)
+        .set(sanityDoc)
+        .setIfMissing({ createdAt: body.createdAt || now })
+        .commit();
+
+      return NextResponse.json(
+        {
+          success: true,
+          tradeId: updated._id,
+          mode: "updated",
+        },
+        { status: 200 }
+      );
+    }
+
+    const created = await client.create({
+      ...sanityDoc,
+      createdAt: body.createdAt || now,
+    });
 
     return NextResponse.json(
       {
         success: true,
         tradeId: created._id,
+        mode: "created",
       },
       { status: 201 }
     );

@@ -1,7 +1,7 @@
 // src/app/save-trade/page.tsx
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function parseFyersDateToISO(fyersDate: string): string {
@@ -62,11 +62,36 @@ const OUTCOME_OPTIONS = [
   { label: "Partial Success", value: "partial success" },
 ];
 
+type EditableTrade = {
+  _id: string;
+  fyersTradeId: string;
+  symbol: string;
+  direction: string;
+  quantity: number;
+  entryPrice: number;
+  exitPrice: number;
+  entryTime: string;
+  exitTime: string;
+  pnl: number;
+  tradeDate: string;
+  setup?: string;
+  outcome?: string;
+  tags?: string[];
+  marketCondition?: string;
+  emotionalState?: string;
+  notes?: string;
+  mistakes?: string[];
+  lessons?: string;
+  createdAt?: string;
+};
 function SaveTradeForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const initial = useMemo(() => {
+  const sanityId = searchParams.get("sanityId") || "";
+  const isEditMode = Boolean(sanityId);
+
+  const initialFromQuery = useMemo(() => {
     const quantityParam = searchParams.get("quantity");
     const buyPriceParam = searchParams.get("buyPrice");
     const sellPriceParam = searchParams.get("sellPrice");
@@ -87,6 +112,8 @@ function SaveTradeForm() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [tradeMeta, setTradeMeta] = useState(initialFromQuery);
+  const [pageLoading, setPageLoading] = useState(isEditMode);
 
   // Additional fields
   const [setup, setSetup] = useState("");
@@ -98,11 +125,61 @@ function SaveTradeForm() {
   const [marketCondition, setMarketCondition] = useState("");
   const [outcome, setOutcome] = useState("");
 
+  useEffect(() => {
+    if (!isEditMode) {
+      setTradeMeta(initialFromQuery);
+      setPageLoading(false);
+      return;
+    }
+
+    const loadTrade = async () => {
+      try {
+        setPageLoading(true);
+        setError("");
+
+        const res = await fetch(`/api/sanity/trade/${sanityId}`, {
+          cache: "no-store",
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setError(data.error || "Failed to load trade");
+          return;
+        }
+        const trade: EditableTrade = data.trade;
+
+        setTradeMeta({
+          tradeId: trade.fyersTradeId || "",
+          symbol: trade.symbol || "",
+          direction: trade.direction || "",
+          quantity: trade.quantity || 0,
+          buyPrice: trade.entryPrice || 0,
+          sellPrice: trade.exitPrice || 0,
+          buyTime: trade.entryTime || "",
+          sellTime: trade.exitTime || "",
+          totalPnl: trade.pnl || 0,
+        });
+        setSetup(trade.setup || "");
+        setTags(Array.isArray(trade.tags) ? trade.tags.join(", ") : "");
+        setNotes(trade.notes || "");
+        setMistakes(Array.isArray(trade.mistakes) ? trade.mistakes : []);
+        setLessons(trade.lessons || "");
+        setEmotionalState(trade.emotionalState || "");
+        setMarketCondition(trade.marketCondition || "");
+        setOutcome(trade.outcome || "");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load trade");
+      } finally {
+        setPageLoading(false);
+      }
+    };
+    loadTrade();
+  }, [initialFromQuery, isEditMode, sanityId]);
+
   const toggleMistake = (value: string) => {
     setMistakes((prev) =>
-      prev.includes(value)
-        ? prev.filter((m) => m !== value)
-        : [...prev, value]
+      prev.includes(value) ? prev.filter((m) => m !== value) : [...prev, value],
     );
   };
 
@@ -111,19 +188,20 @@ function SaveTradeForm() {
     setError("");
 
     try {
-      const tradeDate = parseFyersDateToISO(initial.buyTime);
+      const tradeDate = parseFyersDateToISO(tradeMeta.buyTime);
 
       const tradeData = {
         // FYERS data
-        fyersTradeId: initial.tradeId,
-        symbol: initial.symbol,
-        direction: initial.direction,
-        quantity: initial.quantity,
-        entryPrice: initial.buyPrice,
-        exitPrice: initial.sellPrice,
-        entryTime: initial.buyTime,
-        exitTime: initial.sellTime,
-        pnl: initial.totalPnl,
+        sanityId: isEditMode ? sanityId : undefined,
+        fyersTradeId: tradeMeta.tradeId,
+        symbol: tradeMeta.symbol,
+        direction: tradeMeta.direction,
+        quantity: tradeMeta.quantity,
+        entryPrice: tradeMeta.buyPrice,
+        exitPrice: tradeMeta.sellPrice,
+        entryTime: tradeMeta.buyTime,
+        exitTime: tradeMeta.sellTime,
+        pnl: tradeMeta.totalPnl,
 
         // Additional fields
         setup,
@@ -138,10 +216,8 @@ function SaveTradeForm() {
         marketCondition,
         outcome,
         tradeDate,
-
         // Metadata
-        date: tradeDate,
-        createdAt: new Date().toISOString(),
+        createdAt: isEditMode ? undefined : new Date().toISOString(),
       };
 
       const res = await fetch("/api/sanity/save-trade", {
@@ -156,31 +232,35 @@ function SaveTradeForm() {
         setError(data.error || "Failed to save trade");
         return;
       }
-
-      // Mark as saved in localStorage
-      const saved = localStorage.getItem("savedTrades");
-      const savedSet = saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
-      if (initial.tradeId) {
-        savedSet.add(initial.tradeId);
-      }
-      localStorage.setItem("savedTrades", JSON.stringify([...savedSet]));
+      const targetTradeId = data.tradeId || sanityId;
 
       // Redirect back to trade-details
-      router.push("/trade-details");
+      router.push(
+        targetTradeId ? `/trade-details/${targetTradeId}` : "/trade-details",
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save trade");
     } finally {
       setLoading(false);
     }
   };
+  if (pageLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center text-white">
+        Loading trade...
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 text-white md:px-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">Save Trade to Journal</h1>
-        <p className="mt-2 text-slate-300">
-          Review FYERS data and add additional details before saving.
-        </p>
+        <h1 className="text-3xl font-bold">
+          {isEditMode ? "Edit Trade Journal" : "Save Trade to Journal"}
+        </h1>
+       <h1 className="text-3xl font-bold">
+          {isEditMode ? "Edit Trade Journal" : "Save Trade to Journal"}
+        </h1>
       </div>
 
       {error && (
@@ -197,38 +277,38 @@ function SaveTradeForm() {
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm text-slate-400">Symbol</label>
-              <p className="mt-1 break-all font-mono text-lg">{initial.symbol}</p>
+                <p className="mt-1 break-all font-mono text-lg">{tradeMeta.symbol}</p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Direction</label>
               <p
                 className={`mt-1 text-lg font-semibold ${
-                  initial.direction === "Long"
+                  tradeMeta.direction === "Long"
                     ? "text-emerald-400"
                     : "text-orange-400"
                 }`}
               >
-                {initial.direction}
+                {tradeMeta.direction}
               </p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Quantity</label>
-              <p className="mt-1 font-mono text-lg">{initial.quantity}</p>
+              <p className="mt-1 font-mono text-lg">{tradeMeta.quantity}</p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Entry Price</label>
               <p className="mt-1 font-mono text-lg">
-                ₹{initial.buyPrice.toFixed(2)}
+                ₹{tradeMeta.buyPrice.toFixed(2)}
               </p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Exit Price</label>
               <p className="mt-1 font-mono text-lg">
-                ₹{initial.sellPrice.toFixed(2)}
+                ₹{tradeMeta.sellPrice.toFixed(2)}
               </p>
             </div>
 
@@ -236,22 +316,22 @@ function SaveTradeForm() {
               <label className="text-sm text-slate-400">P&L</label>
               <p
                 className={`mt-1 font-mono text-lg font-semibold ${
-                  initial.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"
+                  tradeMeta.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"
                 }`}
               >
-                {initial.totalPnl >= 0 ? "+" : "-"}₹
-                {Math.abs(initial.totalPnl).toFixed(2)}
+                {tradeMeta.totalPnl >= 0 ? "+" : "-"}₹
+                {Math.abs(tradeMeta.totalPnl).toFixed(2)}
               </p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Entry Time</label>
-              <p className="mt-1 text-sm">{initial.buyTime}</p>
+              <p className="mt-1 text-sm">{tradeMeta.buyTime}</p>
             </div>
 
             <div>
               <label className="text-sm text-slate-400">Exit Time</label>
-              <p className="mt-1 text-sm">{initial.sellTime}</p>
+              <p className="mt-1 text-sm">{tradeMeta.sellTime}</p>
             </div>
           </div>
         </div>
@@ -416,12 +496,18 @@ function SaveTradeForm() {
             Cancel
           </button>
 
-          <button
+         <button
             onClick={handleSave}
             disabled={loading}
             className="flex-1 rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-slate-950 transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? "Saving..." : "Save to Sanity"}
+            {loading
+              ? isEditMode
+                ? "Updating..."
+                : "Saving..."
+              : isEditMode
+              ? "Update Trade"
+              : "Save to Sanity"}
           </button>
         </div>
       </div>
