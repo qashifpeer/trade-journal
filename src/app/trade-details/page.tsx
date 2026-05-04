@@ -32,6 +32,56 @@ type SanityStatusResponse = {
   }[];
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseFyersDate(fyersDate: string): Date {
+  const months: Record<string, number> = {
+    Jan: 0,
+    Feb: 1,
+    Mar: 2,
+    Apr: 3,
+    May: 4,
+    Jun: 5,
+    Jul: 6,
+    Aug: 7,
+    Sep: 8,
+    Oct: 9,
+    Nov: 10,
+    Dec: 11,
+  };
+  const [datePart, timePart] = fyersDate.split(" ");
+  if (!datePart) return new Date(0);
+
+  const [day, monthStr, year] = datePart.split("-");
+  const month = months[monthStr];
+
+  if (month === undefined || !day || !year) return new Date(0);
+
+  const [hours, minutes, seconds] = (timePart ?? "00:00:00")
+    .split(":")
+    .map(Number);
+  return new Date(Number(year), month, Number(day), hours, minutes, seconds);
+}
+
+function sortByBuyTimeAsc(trades: MergedTrade[]): MergedTrade[] {
+  return [...trades].sort(
+    (a, b) =>
+      parseFyersDate(a.buyTime).getTime() - parseFyersDate(b.buyTime).getTime(),
+  );
+}
+
+function formatPrice(value: number) {
+  return `₹${value.toFixed(2)}`;
+}
+
+function formatPnl(value: number) {
+  return `${value >= 0 ? "+" : "-"}₹${Math.abs(value).toFixed(2)}`;
+}
+
+function pnlColor(value: number) {
+  return value >= 0 ? "text-emerald-400" : "text-red-400";
+}
+
 export default function TradeDetailsPage() {
   const router = useRouter();
   const [trades, setTrades] = useState<MergedTrade[]>([]);
@@ -47,23 +97,17 @@ export default function TradeDetailsPage() {
         setLoading(true);
         setError("");
 
-        // ── Step 1: FYERS fetch ──────────────────────────────────────────
-        console.log("[1] Fetching FYERS trades...");
-
         const res = await fetch("/api/fyers/trades", {
           credentials: "include",
           cache: "no-store",
           headers: { "Cache-Control": "no-store" },
         });
 
-        console.log("[2] FYERS response status:", res.status);
-
         const data: TradesApiResponse = await res.json();
 
         console.log("[3] FYERS response body:", data);
 
         if (cancelled) {
-          console.log("[!] Cancelled after FYERS fetch");
           return;
         }
 
@@ -74,21 +118,17 @@ export default function TradeDetailsPage() {
         }
 
         const fyersTrades = Array.isArray(data.trades) ? data.trades : [];
-        setTrades(fyersTrades);
+        const sorted = sortByBuyTimeAsc(fyersTrades);
+        setTrades(sorted);
 
-        console.log("[4] FYERS trade count:", fyersTrades.length);
-        console.log("[4] FYERS trade ids:", fyersTrades.map((t) => t.id));
-
-        if (fyersTrades.length === 0) {
-          console.log("[!] No FYERS trades, skipping Sanity status check");
+         if (sorted.length === 0) {
           setSanityMap({});
           return;
         }
 
-        // ── Step 2: Sanity status fetch ──────────────────────────────────
-        const ids = fyersTrades.map((t) => t.id);
 
-        console.log("[5] Fetching Sanity status for ids:", ids);
+        // ── Step 2: Sanity status fetch ──────────────────────────────────
+         const ids = sorted.map((t) => t.id);
 
         const statusRes = await fetch("/api/sanity/trades/status", {
           method: "POST",
@@ -119,7 +159,7 @@ export default function TradeDetailsPage() {
         console.log(
           "[8] Saved trade ids in map:",
           Object.keys(map).length,
-          "entries"
+          "entries",
         );
 
         setSanityMap(map);
@@ -127,7 +167,7 @@ export default function TradeDetailsPage() {
         console.error("[!] Caught error in loadTradesAndStatus:", err);
         if (!cancelled) {
           setError(
-            err instanceof Error ? err.message : "Unable to fetch FYERS trades"
+            err instanceof Error ? err.message : "Unable to fetch FYERS trades",
           );
         }
       } finally {
@@ -256,7 +296,9 @@ export default function TradeDetailsPage() {
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                     Buy Price
                   </p>
-                  <p className="mt-1 font-mono">{formatPrice(trade.buyPrice)}</p>
+                  <p className="mt-1 font-mono">
+                    {formatPrice(trade.buyPrice)}
+                  </p>
                 </div>
 
                 <div>
@@ -290,7 +332,7 @@ export default function TradeDetailsPage() {
                   </p>
                   <p
                     className={`mt-1 font-mono font-semibold ${pnlColor(
-                      trade.totalPnl
+                      trade.totalPnl,
                     )}`}
                   >
                     {formatPnl(trade.totalPnl)}
