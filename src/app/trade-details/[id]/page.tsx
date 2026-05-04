@@ -1,6 +1,7 @@
 // src/app/trade-details/[id]/page.tsx
 import Link from "next/link";
 import { getSanityWriteClient } from "@/src/lib/sanity.client";
+import DeleteTradeButton from "./DeleteTradeButton";
 
 type TradeDoc = {
   _id: string;
@@ -53,7 +54,7 @@ async function getTrade(id: string): Promise<TradeDoc | null> {
       createdAt,
       updatedAt
     }`,
-    { id }
+    { id },
   );
 
   return trade ?? null;
@@ -107,7 +108,7 @@ export default async function TradeDetailsPage({
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <Link
             href="/trade-details"
             className="inline-flex items-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-white/10"
@@ -121,6 +122,8 @@ export default async function TradeDetailsPage({
           >
             ✏️ Edit
           </Link>
+
+          <DeleteTradeButton tradeId={trade._id} />
         </div>
       </div>
 
@@ -291,18 +294,14 @@ export default async function TradeDetailsPage({
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Notes
               </p>
-              <p className="mt-1 whitespace-pre-wrap">
-                {trade.notes || "-"}
-              </p>
+              <p className="mt-1 whitespace-pre-wrap">{trade.notes || "-"}</p>
             </div>
 
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Lessons Learned
               </p>
-              <p className="mt-1 whitespace-pre-wrap">
-                {trade.lessons || "-"}
-              </p>
+              <p className="mt-1 whitespace-pre-wrap">{trade.lessons || "-"}</p>
             </div>
           </div>
         </div>
