@@ -90,6 +90,8 @@ export const trade = defineType({
       options: {
         list: [
           { title: 'Breakout', value: 'Breakout' },
+          { title: 'Inside Bar', value: 'Inside Bar' },
+          { title: 'SL Hunt', value: 'SL Hunts' },
           { title: 'FIB Retracement', value: 'FIB Retracement' },
           { title: 'Reversal', value: 'Reversal' },
           { title: 'Pullback', value: 'Pullback' },

@@ -34,7 +34,9 @@ function parseFyersDateToISO(fyersDate: string): string {
 }
 
 const STRATEGY_OPTIONS = [
+  "Inside Bar",
   "Breakout",
+  "SL Hunt",
   "FIB Retracement",
   "Reversal",
   "Pullback",
