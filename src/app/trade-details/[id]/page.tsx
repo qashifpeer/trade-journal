@@ -1,6 +1,6 @@
 // src/app/trade-details/[id]/page.tsx
-
 import Link from "next/link";
+import { getSanityWriteClient } from "@/src/lib/sanity.client";
 
 type TradeDoc = {
   _id: string;
@@ -26,24 +26,37 @@ type TradeDoc = {
   updatedAt?: string;
 };
 
-type TradeApiResponse = {
-  success: boolean;
-  trade?: TradeDoc;
-  error?: string;
-};
+async function getTrade(id: string): Promise<TradeDoc | null> {
+  const client = getSanityWriteClient();
 
-async function getTrade(id: string): Promise<TradeDoc> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/sanity/trade/${id}`, {
-    cache: "no-store",
-  });
+  const trade = await client.fetch(
+    `*[_type == "trade" && _id == $id][0]{
+      _id,
+      fyersTradeId,
+      symbol,
+      direction,
+      quantity,
+      entryPrice,
+      exitPrice,
+      entryTime,
+      exitTime,
+      pnl,
+      tradeDate,
+      setup,
+      outcome,
+      tags,
+      marketCondition,
+      emotionalState,
+      notes,
+      mistakes,
+      lessons,
+      createdAt,
+      updatedAt
+    }`,
+    { id }
+  );
 
-  const data: TradeApiResponse = await res.json();
-
-  if (!res.ok || !data.success || !data.trade) {
-    throw new Error(data.error || "Failed to fetch trade");
-  }
-
-  return data.trade;
+  return trade ?? null;
 }
 
 export default async function TradeDetailsPage({
@@ -52,26 +65,17 @@ export default async function TradeDetailsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const trade = await getTrade(id);
 
-  let trade: TradeDoc;
-
-  try {
-    trade = await getTrade(id);
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to load trade details";
-
+  if (!trade) {
     return (
       <main className="mx-auto max-w-4xl px-4 py-10 text-white md:px-6">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Trade Details</h1>
-          <p className="mt-2 text-slate-300">
-            View your saved trade and journal notes.
-          </p>
         </div>
 
         <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-400">
-          {message}
+          Trade not found. It may have been deleted or the ID is invalid.
         </div>
 
         <div className="mt-6">
@@ -89,16 +93,17 @@ export default async function TradeDetailsPage({
   const formatPrice = (value: number) => `₹${value.toFixed(2)}`;
   const formatPnl = (value: number) =>
     `${value >= 0 ? "+" : "-"}₹${Math.abs(value).toFixed(2)}`;
-  const pnlColor =
-    trade.pnl >= 0 ? "text-emerald-400" : "text-red-400";
+  const pnlColor = trade.pnl >= 0 ? "text-emerald-400" : "text-red-400";
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 text-white md:px-6">
+      {/* Header */}
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Trade Details</h1>
           <p className="mt-2 text-slate-300">
-            Saved journal entry for {trade.symbol}.
+            Saved journal entry for{" "}
+            <span className="font-semibold text-white">{trade.symbol}</span>.
           </p>
         </div>
 
@@ -123,6 +128,7 @@ export default async function TradeDetailsPage({
         {/* Core trade info */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
           <h2 className="mb-4 text-lg font-semibold">Core Trade</h2>
+
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -171,18 +177,14 @@ export default async function TradeDetailsPage({
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Entry Price
               </p>
-              <p className="mt-1 font-mono">
-                {formatPrice(trade.entryPrice)}
-              </p>
+              <p className="mt-1 font-mono">{formatPrice(trade.entryPrice)}</p>
             </div>
 
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Exit Price
               </p>
-              <p className="mt-1 font-mono">
-                {formatPrice(trade.exitPrice)}
-              </p>
+              <p className="mt-1 font-mono">{formatPrice(trade.exitPrice)}</p>
             </div>
 
             <div>
@@ -213,63 +215,76 @@ export default async function TradeDetailsPage({
         {/* Journal details */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
           <h2 className="mb-4 text-lg font-semibold">Journal Details</h2>
-          <div className="space-y-3 text-slate-200">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Setup / Strategy
-              </p>
-              <p className="mt-1">{trade.setup || "-"}</p>
-            </div>
 
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Tags
-              </p>
-              <p className="mt-1">
-                {trade.tags && trade.tags.length > 0
-                  ? trade.tags.join(", ")
-                  : "-"}
-              </p>
-            </div>
-
+          <div className="space-y-4 text-slate-200">
             <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Setup / Strategy
+                </p>
+                <p className="mt-1">{trade.setup || "-"}</p>
+              </div>
+
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   Market Condition
                 </p>
-                <p className="mt-1">
-                  {trade.marketCondition || "-"}
-                </p>
+                <p className="mt-1">{trade.marketCondition || "-"}</p>
               </div>
 
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   Emotional State
                 </p>
-                <p className="mt-1">
-                  {trade.emotionalState || "-"}
-                </p>
+                <p className="mt-1">{trade.emotionalState || "-"}</p>
               </div>
+            </div>
 
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Outcome
-                </p>
-                <p className="mt-1">
-                  {trade.outcome || "-"}
-                </p>
-              </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Outcome
+              </p>
+              <p className="mt-1">{trade.outcome || "-"}</p>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Tags
+              </p>
+              {trade.tags && trade.tags.length > 0 ? (
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {trade.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1">-</p>
+              )}
             </div>
 
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Mistakes
               </p>
-              <p className="mt-1">
-                {trade.mistakes && trade.mistakes.length > 0
-                  ? trade.mistakes.join(", ")
-                  : "-"}
-              </p>
+              {trade.mistakes && trade.mistakes.length > 0 ? (
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {trade.mistakes.map((m) => (
+                    <span
+                      key={m}
+                      className="rounded-full bg-red-500/10 px-2.5 py-1 text-xs text-red-400"
+                    >
+                      {m}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1">-</p>
+              )}
             </div>
 
             <div>
@@ -294,14 +309,18 @@ export default async function TradeDetailsPage({
 
         {/* Metadata */}
         {(trade.createdAt || trade.updatedAt) && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-400">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-500">
             <p>
               Created:{" "}
-              {trade.createdAt ? new Date(trade.createdAt).toLocaleString() : "-"}
+              {trade.createdAt
+                ? new Date(trade.createdAt).toLocaleString("en-IN")
+                : "-"}
             </p>
-            <p>
+            <p className="mt-1">
               Last updated:{" "}
-              {trade.updatedAt ? new Date(trade.updatedAt).toLocaleString() : "-"}
+              {trade.updatedAt
+                ? new Date(trade.updatedAt).toLocaleString("en-IN")
+                : "-"}
             </p>
           </div>
         )}
