@@ -1,16 +1,19 @@
 // src/lib/pnl.ts
 import type { Trade } from "@/src/types/trade";
 
+const ESTIMATED_CHARGE_PER_TRADE = 100; // ₹100 per trade
+
 export function calculateEstimatedNetPnL(trades: Trade[]) {
-  const grossPnL = trades.reduce((sum, trade) => sum + (trade.pnl ?? 0), 0);
+  // Gross P&L from your stored pnl field
+  const grossPnL = trades.reduce(
+    (sum, trade) => sum + (trade.pnl ?? 0),
+    0
+  );
 
-  const totalTurnover = trades.reduce((sum, trade) => {
-    const buyValue = (trade.entryPrice ?? 0) * (trade.quantity ?? 0);
-    const sellValue = (trade.exitPrice ?? 0) * (trade.quantity ?? 0);
-    return sum + buyValue + sellValue;
-  }, 0);
+  // Fixed charges: 100 INR per trade
+  const estimatedCharges =
+    trades.length * ESTIMATED_CHARGE_PER_TRADE;
 
-  const estimatedCharges = totalTurnover * 0.01; // temporary rough estimate
-
+  // Net = gross - fixed charges
   return grossPnL - estimatedCharges;
 }
