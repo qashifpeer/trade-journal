@@ -10,7 +10,7 @@ export function calculateEstimatedNetPnL(trades: Trade[]) {
     return sum + buyValue + sellValue;
   }, 0);
 
-  const estimatedCharges = totalTurnover * 0.001; // temporary rough estimate
+  const estimatedCharges = totalTurnover * 0.01; // temporary rough estimate
 
   return grossPnL - estimatedCharges;
 }
