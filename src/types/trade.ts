@@ -28,6 +28,7 @@ export interface Trade {
   mistakes?: string;
   lessons?: string;
   createdAt: string;
+ estimatedNetPnL: number;
 }
 
 export interface MistakeCount {
@@ -41,4 +42,5 @@ export interface DashboardStats {
   averageRiskReward: number | null;
   winRate: number;
   mostCommonMistakes: MistakeCount[];
+  estimatedNetPnL: number;
 }
