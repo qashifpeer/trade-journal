@@ -1,5 +1,10 @@
 // src/lib/dashboard.ts
-import type { Trade, DashboardStats, MistakeCount } from "@/src/types/trade";
+import type {
+  Trade,
+  DashboardStats,
+  MistakeCount,
+} from "@/src/types/trade";
+import { calculateEstimatedNetPnL } from "@/src/lib/pnl";
 
 export interface GroupedStat {
   label: string;
@@ -31,7 +36,9 @@ function normalizeMistakes(
 ): string[] {
   if (!mistakes) return [];
 
-  const array = Array.isArray(mistakes) ? mistakes : mistakes.split(/\n|,/);
+  const array = Array.isArray(mistakes)
+    ? mistakes
+    : mistakes.split(/\n|,/);
 
   return array
     .map((item) => item.trim().toLowerCase())
@@ -50,7 +57,8 @@ function groupTradesByField(
 
   for (const trade of trades) {
     const raw = getValue(trade);
-    const key = raw && raw.trim().length > 0 ? raw.trim() : "Not Set";
+    const key =
+      raw && raw.trim().length > 0 ? raw.trim() : "Not Set";
 
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(trade);
@@ -58,9 +66,14 @@ function groupTradesByField(
 
   return Object.entries(grouped)
     .map(([label, items]) => {
-      const totalPnL = items.reduce((sum, trade) => sum + trade.pnl, 0);
+      const totalPnL = items.reduce(
+        (sum, trade) => sum + (trade.pnl ?? 0),
+        0
+      );
       const tradesCount = items.length;
-      const wins = items.filter((trade) => trade.pnl > 0).length;
+      const wins = items.filter(
+        (trade) => (trade.pnl ?? 0) > 0
+      ).length;
 
       return {
         label: titleCase(label),
@@ -73,13 +86,16 @@ function groupTradesByField(
     .sort((a, b) => b.totalPnL - a.totalPnL);
 }
 
-function buildOutcomeBreakdown(trades: Trade[]): OutcomeBreakdownItem[] {
+function buildOutcomeBreakdown(
+  trades: Trade[]
+): OutcomeBreakdownItem[] {
   const total = trades.length;
   const map: Record<string, number> = {};
 
   for (const trade of trades) {
     const raw = trade.outcome;
-    const key = raw && raw.trim().length > 0 ? raw.trim() : "not set";
+    const key =
+      raw && raw.trim().length > 0 ? raw.trim() : "not set";
     map[key] = (map[key] || 0) + 1;
   }
 
@@ -95,10 +111,22 @@ function buildOutcomeBreakdown(trades: Trade[]): OutcomeBreakdownItem[] {
 export function calculateDashboardStats(
   trades: Trade[]
 ): AdvancedDashboardStats {
-  const totalPnL = trades.reduce((sum, trade) => sum + trade.pnl, 0);
   const totalTrades = trades.length;
-  const winningTrades = trades.filter((trade) => trade.pnl > 0).length;
-  const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+
+  const totalPnL = trades.reduce(
+    (sum, trade) => sum + (trade.pnl ?? 0),
+    0
+  );
+
+  const winningTrades = trades.filter(
+    (trade) => (trade.pnl ?? 0) > 0
+  ).length;
+
+  const winRate =
+    totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+
+  // Use your helper to derive estimated net P&L (per selected month/year trades)
+  const estimatedNetPnL = calculateEstimatedNetPnL(trades);
 
   const mistakeMap: Record<string, number> = {};
 
@@ -110,7 +138,9 @@ export function calculateDashboardStats(
     }
   }
 
-  const mostCommonMistakes: MistakeCount[] = Object.entries(mistakeMap)
+  const mostCommonMistakes: MistakeCount[] = Object.entries(
+    mistakeMap
+  )
     .map(([mistake, count]) => ({
       mistake: titleCase(mistake),
       count,
@@ -120,11 +150,14 @@ export function calculateDashboardStats(
   return {
     totalPnL,
     totalTrades,
-    // You can compute this later from risk/reward fields
-    averageRiskReward: null,
+    averageRiskReward: null, // keep for later calculation
     winRate,
     mostCommonMistakes,
-    setupPerformance: groupTradesByField(trades, (trade) => trade.setup),
+    estimatedNetPnL,
+    setupPerformance: groupTradesByField(
+      trades,
+      (trade) => trade.setup
+    ),
     emotionalPerformance: groupTradesByField(
       trades,
       (trade) => trade.emotionalState

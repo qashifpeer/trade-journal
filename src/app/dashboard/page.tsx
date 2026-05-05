@@ -13,7 +13,9 @@ import {
   Target,
   Trophy,
   Wallet,
+  IndianRupee,
 } from "lucide-react";
+import { formatInr } from "@/src/lib/format";
 
 type PageProps = {
   searchParams?: Promise<{
@@ -21,6 +23,27 @@ type PageProps = {
     year?: string;
   }>;
 };
+
+function getPnLAppearance(value: number) {
+  if (value < 0) {
+    return {
+      accent: "red" as const,
+      valueClassName: "text-rose-400",
+    };
+  }
+
+  if (value > 0) {
+    return {
+      accent: "green" as const,
+      valueClassName: "text-emerald-400",
+    };
+  }
+
+  return {
+    accent: "cyan" as const,
+    valueClassName: "text-slate-200",
+  };
+}
 
 export default async function DashboardPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
@@ -32,9 +55,13 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const trades = await getTradesByMonthYear(year, month);
   const stats = calculateDashboardStats(trades);
 
+  const grossAppearance = getPnLAppearance(stats.totalPnL);
+  const netAppearance = getPnLAppearance(stats.estimatedNetPnL);
+
   return (
     <main className="min-h-screen bg-[#0a0f1f] bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.10),_transparent_30%),radial-gradient(circle_at_right,_rgba(168,85,247,0.10),_transparent_25%),linear-gradient(180deg,_#0a0f1f_0%,_#0b1120_100%)] px-4 py-6 text-white sm:px-6">
       <div className="mx-auto max-w-7xl space-y-6">
+        {/* Header */}
         <header className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl shadow-[0_0_60px_rgba(34,211,238,0.08)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -45,7 +72,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
                 Dashboard Overview
               </h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-400">
-                Review your monthly performance, psychology, and recurring habits.
+                Review your monthly performance, psychology, and recurring
+                habits.
               </p>
             </div>
 
@@ -53,26 +81,49 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           </div>
         </header>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Top stats cards */}
+        <section className="grid gap-4 lg:grid-cols-5 sm:grid-cols-2">
+          {/* Gross Profit / Loss */}
           <StatCard
             title="Profit / Loss"
-            value={`₹${stats.totalPnL.toFixed(2)}`}
+            value={formatInr(stats.totalPnL)}
             icon={Wallet}
-            accent="green"
+            accent={grossAppearance.accent}
+            valueClassName={grossAppearance.valueClassName}
           />
+
+          {/* Net P&L (Estimated) */}
+          <StatCard
+            title="Net P&L (Estimated)"
+            value={formatInr(stats.estimatedNetPnL)}
+            hint="For selected month • After estimated charges"
+            icon={IndianRupee}
+            accent={netAppearance.accent}
+            valueClassName={netAppearance.valueClassName}
+          />
+
+          {/* Total trades */}
           <StatCard
             title="Total Trades"
             value={String(stats.totalTrades)}
             icon={CandlestickChart}
             accent="cyan"
           />
+
+          {/* Average risk reward */}
           <StatCard
             title="Average Risk Reward"
-            value={stats.averageRiskReward === null ? "N/A" : stats.averageRiskReward.toFixed(2)}
+            value={
+              stats.averageRiskReward === null
+                ? "N/A"
+                : stats.averageRiskReward.toFixed(2)
+            }
             hint="Add riskAmount and rewardAmount fields for this metric"
             icon={Target}
             accent="violet"
           />
+
+          {/* Win rate */}
           <StatCard
             title="Win Rate"
             value={`${stats.winRate.toFixed(2)}%`}
@@ -81,6 +132,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           />
         </section>
 
+        {/* Setup / Emotion / Outcome */}
         <section className="grid gap-4 xl:grid-cols-3">
           <GroupPerformanceCard
             title="Setup-wise Performance"
@@ -99,6 +151,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <OutcomeBreakdownCard items={stats.outcomeBreakdown} />
         </section>
 
+        {/* Market condition / mistakes */}
         <section className="grid gap-4 xl:grid-cols-2">
           <GroupPerformanceCard
             title="Market Condition"
@@ -110,6 +163,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <MistakesCard mistakes={stats.mostCommonMistakes} />
         </section>
 
+        {/* Trades table */}
         <TradesTable trades={trades} />
       </div>
     </main>
