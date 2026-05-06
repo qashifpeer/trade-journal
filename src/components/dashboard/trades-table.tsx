@@ -34,6 +34,54 @@ function getPnLClass(pnl: number) {
   return "text-slate-300";
 }
 
+function formatTradeSymbol(symbol?: string) {
+  if (!symbol) return "—";
+
+  const cleaned = symbol.replace(/^NSE:/, "");
+  const optionTypeMatch = cleaned.match(/(CE|PE)$/);
+  const strikeMatch = cleaned.match(/(\d{5})(CE|PE)$/);
+
+  const optionType = optionTypeMatch?.[1] ?? "";
+  const strike = strikeMatch?.[1] ?? "";
+
+  let base = cleaned;
+
+  if (strike && optionType) {
+    base = cleaned.replace(new RegExp(`${strike}${optionType}$`), "");
+  } else if (optionType) {
+    base = cleaned.replace(new RegExp(`${optionType}$`), "");
+  }
+
+  const underlying = base.replace(/\d+$/, "");
+
+  if (!underlying) return cleaned;
+  if (!strike || !optionType) return underlying;
+
+  return `${underlying}-${strike}-${optionType}`;
+}
+
+function formatTimeOnly(value?: string) {
+  if (!value) return "—";
+
+  const match = value.match(/(\d{2}):(\d{2})/);
+  if (match) {
+    return `${match[1]}:${match[2]}`;
+  }
+
+  return value;
+}
+
+function getTradeTimeRange(trade: Trade) {
+  const entryTime = formatTimeOnly(trade.entryTime);
+  const exitTime = formatTimeOnly(trade.exitTime);
+
+  if (entryTime === "—" && exitTime === "—") return "—";
+  if (entryTime !== "—" && exitTime !== "—") return `${entryTime}   ${exitTime}`;
+  if (entryTime !== "—") return entryTime;
+
+  return exitTime;
+}
+
 export function TradesTable({ trades }: Props) {
   return (
     <section className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_0_40px_rgba(34,211,238,0.06)]">
@@ -64,10 +112,10 @@ export function TradesTable({ trades }: Props) {
           <thead>
             <tr className="border-b border-white/10 text-left">
               <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Symbol
+                Date
               </th>
               <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Date
+                Symbol
               </th>
               <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Direction
@@ -94,15 +142,19 @@ export function TradesTable({ trades }: Props) {
                   key={trade._id}
                   className="border-b border-white/5 transition hover:bg-white/[0.03]"
                 >
-                  <td className="px-5 py-4">
-                    <div>
-                      <p className="font-medium text-white">{trade.symbol}</p>
-                      <p className="text-xs text-slate-500">{trade.fyersTradeId}</p>
-                    </div>
+                  <td className="px-5 py-4 text-sm text-slate-300">
+                    {trade.tradeDate || "—"}
                   </td>
 
-                  <td className="px-5 py-4 text-sm text-slate-300">
-                    {trade.tradeDate}
+                  <td className="px-5 py-4">
+                    <div>
+                      <p className="font-medium text-white">
+                        {formatTradeSymbol(trade.symbol)}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {getTradeTimeRange(trade)}
+                      </p>
+                    </div>
                   </td>
 
                   <td className="px-5 py-4">
@@ -176,8 +228,15 @@ export function TradesTable({ trades }: Props) {
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="font-medium text-white">{trade.symbol}</h3>
-                  <p className="mt-1 text-xs text-slate-500">{trade.tradeDate}</p>
+                  <p className="text-xs text-slate-500">
+                    {trade.tradeDate || "—"}
+                  </p>
+                  <h3 className="mt-1 font-medium text-white">
+                    {formatTradeSymbol(trade.symbol)}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {getTradeTimeRange(trade)}
+                  </p>
                 </div>
 
                 <span
