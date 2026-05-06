@@ -102,11 +102,16 @@ function formatTimeOnly(value?: string) {
 
 // If your Trade uses buyTime/sellTime instead, swap entryTime/exitTime here.
 function getTradeTimeRange(trade: Trade) {
-  const entryTime = formatTimeOnly((trade as any).entryTime ?? (trade as any).buyTime);
-  const exitTime = formatTimeOnly((trade as any).exitTime ?? (trade as any).sellTime);
+  const entryTime = formatTimeOnly(
+    (trade as any).entryTime ?? (trade as any).buyTime,
+  );
+  const exitTime = formatTimeOnly(
+    (trade as any).exitTime ?? (trade as any).sellTime,
+  );
 
   if (entryTime === "—" && exitTime === "—") return "—";
-  if (entryTime !== "—" && exitTime !== "—") return `${entryTime}   ${exitTime}`;
+  if (entryTime !== "—" && exitTime !== "—")
+    return `${entryTime}   ${exitTime}`;
   if (entryTime !== "—") return entryTime;
 
   return exitTime;
@@ -124,13 +129,13 @@ function sortTrades(trades: Trade[], sortBy: SortOption): Trade[] {
       return cloned.sort(
         (a, b) =>
           new Date(b.tradeDate ?? "").getTime() -
-          new Date(a.tradeDate ?? "").getTime()
+          new Date(a.tradeDate ?? "").getTime(),
       );
     case "OLDEST_FIRST":
       return cloned.sort(
         (a, b) =>
           new Date(a.tradeDate ?? "").getTime() -
-          new Date(b.tradeDate ?? "").getTime()
+          new Date(b.tradeDate ?? "").getTime(),
       );
     default:
       return cloned;
@@ -139,9 +144,7 @@ function sortTrades(trades: Trade[], sortBy: SortOption): Trade[] {
 
 function filterTrades(trades: Trade[], filters: TradesFilterState): Trade[] {
   return trades.filter((trade) => {
-    const tradeDate = trade.tradeDate
-      ? new Date(trade.tradeDate)
-      : undefined;
+    const tradeDate = trade.tradeDate ? new Date(trade.tradeDate) : undefined;
 
     if (filters.startDate) {
       const start = new Date(filters.startDate);
@@ -543,6 +546,9 @@ export function TradesTable({ trades }: Props) {
                 Direction
               </th>
               <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Quantity
+              </th>
+              <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Setup
               </th>
               <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -595,6 +601,9 @@ export function TradesTable({ trades }: Props) {
                       {trade.direction}
                     </span>
                   </td>
+                  <td className="px-5 py-4 text-sm text-slate-300">
+                    {trade.quantity ?? "—"}
+                  </td>
 
                   <td className="px-5 py-4 text-sm text-slate-300">
                     {trade.setup || "—"}
@@ -603,7 +612,7 @@ export function TradesTable({ trades }: Props) {
                   <td className="px-5 py-4">
                     <span
                       className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${getOutcomeTone(
-                        trade.outcome
+                        trade.outcome,
                       )}`}
                     >
                       {trade.outcome || "—"}
@@ -612,11 +621,10 @@ export function TradesTable({ trades }: Props) {
 
                   <td
                     className={`px-5 py-4 text-sm font-semibold ${getPnLClass(
-                      trade.pnl
+                      trade.pnl,
                     )}`}
                   >
-                    {trade.pnl > 0 ? "+" : ""}
-                    ₹{trade.pnl.toFixed(2)}
+                    {trade.pnl > 0 ? "+" : ""}₹{trade.pnl.toFixed(2)}
                   </td>
 
                   <td className="px-5 py-4 text-right">
@@ -668,8 +676,7 @@ export function TradesTable({ trades }: Props) {
                 <span
                   className={`text-sm font-semibold ${getPnLClass(trade.pnl)}`}
                 >
-                  {trade.pnl > 0 ? "+" : ""}
-                  ₹{trade.pnl.toFixed(2)}
+                  {trade.pnl > 0 ? "+" : ""}₹{trade.pnl.toFixed(2)}
                 </span>
               </div>
 
@@ -688,6 +695,9 @@ export function TradesTable({ trades }: Props) {
                   )}
                   {trade.direction}
                 </span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                  Qty: {trade.quantity ?? "—"}
+                </span>
 
                 {trade.setup ? (
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
@@ -698,7 +708,7 @@ export function TradesTable({ trades }: Props) {
                 {trade.outcome ? (
                   <span
                     className={`rounded-full border px-3 py-1 text-xs font-medium ${getOutcomeTone(
-                      trade.outcome
+                      trade.outcome,
                     )}`}
                   >
                     {trade.outcome}
