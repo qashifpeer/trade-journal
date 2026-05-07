@@ -1,34 +1,44 @@
 // src/types/trade.ts
-export type Direction = "Long" | "Short";
+export type TradeDirection = "Long" | "Short";
 
-export type Outcome =
+export type TradeOutcome =
   | "mistake"
   | "followed plan"
   | "full success"
-  | "partial success";
+  | "partial success"
+  | string;
 
 export interface Trade {
   _id: string;
   tradeDate: string;
-  fyersTradeId: string;
+
+  fyersTradeId?: string;
   symbol: string;
-  direction: Direction;
+  direction: TradeDirection;
   quantity: number;
-  entryPrice: number;
-  exitPrice: number;
-  entryTime: string;
-  exitTime: string;
+
+  buyPrice?: number | null;
+  sellPrice?: number | null;
+
+  buyTime?: string | null;
+  sellTime?: string | null;
+
+  entryTime?: string | null;
+  exitTime?: string | null;
+
   pnl: number;
-  setup?: string;
-  outcome?: Outcome;
-  tags?: string[];
-  marketCondition?: string;
-  emotionalState?: string;
-  notes?: string;
-  mistakes?: string;
-  lessons?: string;
-  createdAt: string;
- estimatedNetPnL: number;
+
+  setup?: string | null;
+  outcome?: TradeOutcome | null;
+
+  mistakes?: string[] | string | null;
+
+  notes?: string | null;
+  emotionalState?: string | null;
+  marketCondition?: string | null;
+
+  riskAmount?: number | null;
+  rewardAmount?: number | null;
 }
 
 export interface MistakeCount {
@@ -43,4 +53,5 @@ export interface DashboardStats {
   winRate: number;
   mostCommonMistakes: MistakeCount[];
   estimatedNetPnL: number;
+  estimatedNetPnLPoints: number;
 }
