@@ -42,7 +42,7 @@ const defaultFilters: TradesFilterState = {
   outcomes: [],
 };
 
-function getOutcomeTone(outcome?: string) {
+function getOutcomeTone(outcome?: string | null) {
   switch (outcome) {
     case "full success":
       return "border-emerald-300/20 bg-emerald-400/10 text-emerald-300";
@@ -63,7 +63,7 @@ function getPnLClass(pnl: number) {
   return "text-slate-300";
 }
 
-function formatTradeSymbol(symbol?: string) {
+function formatTradeSymbol(symbol?: string | null) {
   if (!symbol) return "—";
 
   const cleaned = symbol.replace(/^NSE:/, "");
@@ -89,7 +89,7 @@ function formatTradeSymbol(symbol?: string) {
   return `${underlying}-${strike}-${optionType}`;
 }
 
-function formatTimeOnly(value?: string) {
+function formatTimeOnly(value?: string | null) {
   if (!value) return "—";
 
   const match = value.match(/(\d{2}):(\d{2})/);
@@ -100,18 +100,12 @@ function formatTimeOnly(value?: string) {
   return value;
 }
 
-// If your Trade uses buyTime/sellTime instead, swap entryTime/exitTime here.
 function getTradeTimeRange(trade: Trade) {
-  const entryTime = formatTimeOnly(
-    (trade as any).entryTime ?? (trade as any).buyTime,
-  );
-  const exitTime = formatTimeOnly(
-    (trade as any).exitTime ?? (trade as any).sellTime,
-  );
+  const entryTime = formatTimeOnly(trade.entryTime ?? trade.buyTime);
+  const exitTime = formatTimeOnly(trade.exitTime ?? trade.sellTime);
 
   if (entryTime === "—" && exitTime === "—") return "—";
-  if (entryTime !== "—" && exitTime !== "—")
-    return `${entryTime}   ${exitTime}`;
+  if (entryTime !== "—" && exitTime !== "—") return `${entryTime}   ${exitTime}`;
   if (entryTime !== "—") return entryTime;
 
   return exitTime;
@@ -129,13 +123,13 @@ function sortTrades(trades: Trade[], sortBy: SortOption): Trade[] {
       return cloned.sort(
         (a, b) =>
           new Date(b.tradeDate ?? "").getTime() -
-          new Date(a.tradeDate ?? "").getTime(),
+          new Date(a.tradeDate ?? "").getTime()
       );
     case "OLDEST_FIRST":
       return cloned.sort(
         (a, b) =>
           new Date(a.tradeDate ?? "").getTime() -
-          new Date(b.tradeDate ?? "").getTime(),
+          new Date(b.tradeDate ?? "").getTime()
       );
     default:
       return cloned;
@@ -210,8 +204,8 @@ export function TradesTable({ trades }: Props) {
   }, [trades, filters, sortBy]);
 
   const hasActiveFilters =
-    filters.startDate ||
-    filters.endDate ||
+    Boolean(filters.startDate) ||
+    Boolean(filters.endDate) ||
     filters.direction !== "both" ||
     filters.strategies.length > 0 ||
     filters.outcomes.length > 0;
@@ -244,7 +238,6 @@ export function TradesTable({ trades }: Props) {
 
   return (
     <section className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_0_40px_rgba(34,211,238,0.06)]">
-      {/* Header with sort + filter */}
       <div className="flex flex-col gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-400/10">
@@ -260,7 +253,6 @@ export function TradesTable({ trades }: Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Sort dropdown */}
           <div className="relative">
             <button
               type="button"
@@ -327,7 +319,6 @@ export function TradesTable({ trades }: Props) {
             )}
           </div>
 
-          {/* Filter pill */}
           <button
             type="button"
             onClick={() => setIsFilterOpen(true)}
@@ -346,7 +337,6 @@ export function TradesTable({ trades }: Props) {
         </div>
       </div>
 
-      {/* Filter dialog */}
       {isFilterOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-950/95 p-5 text-slate-100 shadow-[0_0_60px_rgba(34,211,238,0.2)]">
@@ -364,7 +354,6 @@ export function TradesTable({ trades }: Props) {
             </div>
 
             <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
-              {/* Date range */}
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Date Range
@@ -405,7 +394,6 @@ export function TradesTable({ trades }: Props) {
                 </div>
               </div>
 
-              {/* Trading strategy */}
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Trading Strategy
@@ -441,7 +429,6 @@ export function TradesTable({ trades }: Props) {
                 </div>
               </div>
 
-              {/* Trade direction */}
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Trade Direction
@@ -473,7 +460,6 @@ export function TradesTable({ trades }: Props) {
                 </div>
               </div>
 
-              {/* Outcome */}
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Outcome
@@ -510,7 +496,6 @@ export function TradesTable({ trades }: Props) {
               </div>
             </div>
 
-            {/* Footer buttons */}
             <div className="mt-5 flex items-center justify-between gap-3">
               <button
                 type="button"
@@ -531,7 +516,6 @@ export function TradesTable({ trades }: Props) {
         </div>
       )}
 
-      {/* Desktop table */}
       <div className="hidden overflow-x-auto lg:block">
         <table className="min-w-full">
           <thead>
@@ -601,6 +585,7 @@ export function TradesTable({ trades }: Props) {
                       {trade.direction}
                     </span>
                   </td>
+
                   <td className="px-5 py-4 text-sm text-slate-300">
                     {trade.quantity ?? "—"}
                   </td>
@@ -612,7 +597,7 @@ export function TradesTable({ trades }: Props) {
                   <td className="px-5 py-4">
                     <span
                       className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${getOutcomeTone(
-                        trade.outcome,
+                        trade.outcome
                       )}`}
                     >
                       {trade.outcome || "—"}
@@ -621,7 +606,7 @@ export function TradesTable({ trades }: Props) {
 
                   <td
                     className={`px-5 py-4 text-sm font-semibold ${getPnLClass(
-                      trade.pnl,
+                      trade.pnl
                     )}`}
                   >
                     {trade.pnl > 0 ? "+" : ""}₹{trade.pnl.toFixed(2)}
@@ -641,7 +626,7 @@ export function TradesTable({ trades }: Props) {
             ) : (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-5 py-10 text-center text-sm text-slate-400"
                 >
                   No trades found for this period.
@@ -652,7 +637,6 @@ export function TradesTable({ trades }: Props) {
         </table>
       </div>
 
-      {/* Mobile cards */}
       <div className="space-y-3 p-4 lg:hidden">
         {filteredAndSortedTrades.length > 0 ? (
           filteredAndSortedTrades.map((trade) => (
@@ -695,6 +679,7 @@ export function TradesTable({ trades }: Props) {
                   )}
                   {trade.direction}
                 </span>
+
                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
                   Qty: {trade.quantity ?? "—"}
                 </span>
@@ -708,7 +693,7 @@ export function TradesTable({ trades }: Props) {
                 {trade.outcome ? (
                   <span
                     className={`rounded-full border px-3 py-1 text-xs font-medium ${getOutcomeTone(
-                      trade.outcome,
+                      trade.outcome
                     )}`}
                   >
                     {trade.outcome}

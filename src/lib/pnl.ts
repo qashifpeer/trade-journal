@@ -1,19 +1,36 @@
 // src/lib/pnl.ts
 import type { Trade } from "@/src/types/trade";
+import {
+  ESTIMATED_CHARGE_PER_TRADE,
+  NIFTY_LOT_SIZE,
+} from "@/src/lib/trading-config";
 
-const ESTIMATED_CHARGE_PER_TRADE = 100; // ₹100 per trade
+export function calculateGrossPnL(trades: Trade[]) {
+  return trades.reduce((sum, trade) => sum + (trade.pnl ?? 0), 0);
+}
+
+export function calculateEstimatedCharges(trades: Trade[]) {
+  return trades.length * ESTIMATED_CHARGE_PER_TRADE;
+}
 
 export function calculateEstimatedNetPnL(trades: Trade[]) {
-  // Gross P&L from your stored pnl field
-  const grossPnL = trades.reduce(
-    (sum, trade) => sum + (trade.pnl ?? 0),
-    0
-  );
-
-  // Fixed charges: 100 INR per trade
-  const estimatedCharges =
-    trades.length * ESTIMATED_CHARGE_PER_TRADE;
-
-  // Net = gross - fixed charges
+  const grossPnL = calculateGrossPnL(trades);
+  const estimatedCharges = calculateEstimatedCharges(trades);
   return grossPnL - estimatedCharges;
+}
+
+export function calculateNetPnLPoints(
+  netPnL: number,
+  lotSize: number = NIFTY_LOT_SIZE
+) {
+  if (!lotSize || lotSize <= 0) return 0;
+  return netPnL / lotSize;
+}
+
+export function calculateEstimatedNetPnLPoints(
+  trades: Trade[],
+  lotSize: number = NIFTY_LOT_SIZE
+) {
+  const netPnL = calculateEstimatedNetPnL(trades);
+  return calculateNetPnLPoints(netPnL, lotSize);
 }

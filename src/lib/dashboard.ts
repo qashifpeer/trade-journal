@@ -1,10 +1,13 @@
 // src/lib/dashboard.ts
-import type {
-  Trade,
-  DashboardStats,
-  MistakeCount,
-} from "@/src/types/trade";
-import { calculateEstimatedNetPnL } from "@/src/lib/pnl";
+import type { Trade, DashboardStats, MistakeCount } from "@/src/types/trade";
+import {
+  calculateEstimatedNetPnL,
+  calculateEstimatedNetPnLPoints,
+} from "@/src/lib/pnl";
+import {
+  DEFAULT_RISK_AMOUNT,
+  DEFAULT_REWARD_AMOUNT,
+} from "@/src/lib/trading-config";
 
 export interface GroupedStat {
   label: string;
@@ -27,85 +30,115 @@ export interface AdvancedDashboardStats extends DashboardStats {
   outcomeBreakdown: OutcomeBreakdownItem[];
 }
 
-/**
- * Normalize mistakes into a lowercased array of non-empty strings.
- * Handles both old string form and new string[] form.
- */
-function normalizeMistakes(
-  mistakes?: string | string[] | null
-): string[] {
-  if (!mistakes) return [];
-
-  const array = Array.isArray(mistakes)
-    ? mistakes
-    : mistakes.split(/\n|,/);
-
-  return array
-    .map((item) => item.trim().toLowerCase())
-    .filter((item) => item.length > 0);
+function titleCase(value: string) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
-function titleCase(value: string): string {
-  return value.replace(/\b\w/g, (char) => char.toUpperCase());
+function normalizeLabel(value?: string | null) {
+  if (!value || !value.trim()) return "Unknown";
+  return value.trim();
+}
+
+function normalizeMistakes(mistakes?: string[] | string | null): string[] {
+  if (!mistakes) return [];
+
+  if (Array.isArray(mistakes)) {
+    return mistakes
+      .map((item) => item?.trim())
+      .filter((item): item is string => Boolean(item));
+  }
+
+  if (typeof mistakes === "string") {
+    return mistakes
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 function groupTradesByField(
   trades: Trade[],
-  getValue: (trade: Trade) => string | undefined | null
+  getKey: (trade: Trade) => string | undefined | null
 ): GroupedStat[] {
-  const grouped: Record<string, Trade[]> = {};
+  const grouped = new Map<string, Trade[]>();
 
   for (const trade of trades) {
-    const raw = getValue(trade);
-    const key =
-      raw && raw.trim().length > 0 ? raw.trim() : "Not Set";
+    const key = normalizeLabel(getKey(trade));
 
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(trade);
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+
+    grouped.get(key)!.push(trade);
   }
 
-  return Object.entries(grouped)
-    .map(([label, items]) => {
-      const totalPnL = items.reduce(
+  return Array.from(grouped.entries())
+    .map(([label, groupedTrades]) => {
+      const totalPnL = groupedTrades.reduce(
         (sum, trade) => sum + (trade.pnl ?? 0),
         0
       );
-      const tradesCount = items.length;
-      const wins = items.filter(
-        (trade) => (trade.pnl ?? 0) > 0
-      ).length;
+
+      const tradesCount = groupedTrades.length;
+      const wins = groupedTrades.filter((trade) => (trade.pnl ?? 0) > 0).length;
 
       return {
-        label: titleCase(label),
+        label,
         trades: tradesCount,
         totalPnL,
-        averagePnL: tradesCount ? totalPnL / tradesCount : 0,
-        winRate: tradesCount ? (wins / tradesCount) * 100 : 0,
+        averagePnL: tradesCount > 0 ? totalPnL / tradesCount : 0,
+        winRate: tradesCount > 0 ? (wins / tradesCount) * 100 : 0,
       };
     })
     .sort((a, b) => b.totalPnL - a.totalPnL);
 }
 
-function buildOutcomeBreakdown(
-  trades: Trade[]
-): OutcomeBreakdownItem[] {
-  const total = trades.length;
-  const map: Record<string, number> = {};
+function buildOutcomeBreakdown(trades: Trade[]): OutcomeBreakdownItem[] {
+  const totalTrades = trades.length;
+  const outcomeMap = new Map<string, number>();
 
   for (const trade of trades) {
-    const raw = trade.outcome;
-    const key =
-      raw && raw.trim().length > 0 ? raw.trim() : "not set";
-    map[key] = (map[key] || 0) + 1;
+    const label = normalizeLabel(trade.outcome);
+    outcomeMap.set(label, (outcomeMap.get(label) || 0) + 1);
   }
 
-  return Object.entries(map)
+  return Array.from(outcomeMap.entries())
     .map(([label, count]) => ({
-      label: titleCase(label),
+      label,
       count,
-      percentage: total ? (count / total) * 100 : 0,
+      percentage: totalTrades > 0 ? (count / totalTrades) * 100 : 0,
     }))
     .sort((a, b) => b.count - a.count);
+}
+
+function calculateAverageRiskReward(trades: Trade[]) {
+  if (trades.length === 0) return null;
+
+  const ratios = trades.map((trade) => {
+    const risk =
+      trade.riskAmount && trade.riskAmount > 0
+        ? trade.riskAmount
+        : DEFAULT_RISK_AMOUNT;
+
+    const reward =
+      trade.rewardAmount && trade.rewardAmount > 0
+        ? trade.rewardAmount
+        : DEFAULT_REWARD_AMOUNT;
+
+    if (!risk || risk <= 0) return 0;
+    return reward / risk;
+  });
+
+  if (ratios.length === 0) return null;
+
+  const total = ratios.reduce((sum, ratio) => sum + ratio, 0);
+  return total / ratios.length;
 }
 
 export function calculateDashboardStats(
@@ -113,20 +146,15 @@ export function calculateDashboardStats(
 ): AdvancedDashboardStats {
   const totalTrades = trades.length;
 
-  const totalPnL = trades.reduce(
-    (sum, trade) => sum + (trade.pnl ?? 0),
-    0
-  );
+  const totalPnL = trades.reduce((sum, trade) => sum + (trade.pnl ?? 0), 0);
 
-  const winningTrades = trades.filter(
-    (trade) => (trade.pnl ?? 0) > 0
-  ).length;
+  const winningTrades = trades.filter((trade) => (trade.pnl ?? 0) > 0).length;
 
-  const winRate =
-    totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+  const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
 
-  // Use your helper to derive estimated net P&L (per selected month/year trades)
   const estimatedNetPnL = calculateEstimatedNetPnL(trades);
+  const estimatedNetPnLPoints = calculateEstimatedNetPnLPoints(trades);
+  const averageRiskReward = calculateAverageRiskReward(trades);
 
   const mistakeMap: Record<string, number> = {};
 
@@ -138,9 +166,7 @@ export function calculateDashboardStats(
     }
   }
 
-  const mostCommonMistakes: MistakeCount[] = Object.entries(
-    mistakeMap
-  )
+  const mostCommonMistakes: MistakeCount[] = Object.entries(mistakeMap)
     .map(([mistake, count]) => ({
       mistake: titleCase(mistake),
       count,
@@ -150,14 +176,12 @@ export function calculateDashboardStats(
   return {
     totalPnL,
     totalTrades,
-    averageRiskReward: null, // keep for later calculation
+    averageRiskReward,
     winRate,
     mostCommonMistakes,
     estimatedNetPnL,
-    setupPerformance: groupTradesByField(
-      trades,
-      (trade) => trade.setup
-    ),
+    estimatedNetPnLPoints,
+    setupPerformance: groupTradesByField(trades, (trade) => trade.setup),
     emotionalPerformance: groupTradesByField(
       trades,
       (trade) => trade.emotionalState
