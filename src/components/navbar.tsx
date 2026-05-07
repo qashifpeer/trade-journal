@@ -7,6 +7,7 @@ import { useState } from 'react'
 const navItems = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Trade Details', href: '/trade-details' },
+  { label: 'My Trades', href: '/my-trades' },
 ]
 
 export default function Navbar() {

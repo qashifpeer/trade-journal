@@ -111,7 +111,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           </div>
         </header>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
           <StatCard
             title="Profit / Loss"
             value={formatInr(stats.totalPnL)}

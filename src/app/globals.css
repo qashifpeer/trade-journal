@@ -5,9 +5,20 @@
   --foreground: #e5eefb;
 }
 
-
 body {
   background: radial-gradient(circle at top, #14213d, #0b1020 55%);
   color: var(--foreground);
   min-height: 100vh;
+}
+select,
+select option {
+  background-color: #020617; /* slate-950 */
+  color: #e5e7eb; /* slate-200 */
+}
+
+select option:hover,
+select option:focus,
+select option:checked {
+  background-color: #0369a1; /* sky-700-like highlight */
+  color: #f9fafb; /* slate-50 */
 }

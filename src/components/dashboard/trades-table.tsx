@@ -1,7 +1,7 @@
 // src/components/dashboard/trades-table.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight,
@@ -41,6 +41,8 @@ const defaultFilters: TradesFilterState = {
   direction: "both",
   outcomes: [],
 };
+
+const TRADES_PER_PAGE = 6;
 
 function getOutcomeTone(outcome?: string | null) {
   switch (outcome) {
@@ -189,11 +191,31 @@ function getUniqueOutcomes(trades: Trade[]): string[] {
   return Array.from(set).sort();
 }
 
+function getVisiblePageNumbers(currentPage: number, totalPages: number) {
+  const pages: number[] = [];
+
+  const start = Math.max(1, currentPage - 1);
+  const end = Math.min(totalPages, currentPage + 1);
+
+  if (start > 1) pages.push(1);
+  if (start > 2) pages.push(-1);
+
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+
+  if (end < totalPages - 1) pages.push(-1);
+  if (end < totalPages) pages.push(totalPages);
+
+  return pages;
+}
+
 export function TradesTable({ trades }: Props) {
   const [sortBy, setSortBy] = useState<SortOption>("NEWEST_FIRST");
   const [filters, setFilters] = useState<TradesFilterState>(defaultFilters);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const strategies = useMemo(() => getUniqueStrategies(trades), [trades]);
   const outcomes = useMemo(() => getUniqueOutcomes(trades), [trades]);
@@ -203,6 +225,27 @@ export function TradesTable({ trades }: Props) {
     return sortTrades(filtered, sortBy);
   }, [trades, filters, sortBy]);
 
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredAndSortedTrades.length / TRADES_PER_PAGE)
+  );
+
+  const paginatedTrades = useMemo(() => {
+    const startIndex = (currentPage - 1) * TRADES_PER_PAGE;
+    const endIndex = startIndex + TRADES_PER_PAGE;
+    return filteredAndSortedTrades.slice(startIndex, endIndex);
+  }, [filteredAndSortedTrades, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters, sortBy]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   const hasActiveFilters =
     Boolean(filters.startDate) ||
     Boolean(filters.endDate) ||
@@ -210,7 +253,10 @@ export function TradesTable({ trades }: Props) {
     filters.strategies.length > 0 ||
     filters.outcomes.length > 0;
 
-  const resetFilters = () => setFilters(defaultFilters);
+  const resetFilters = () => {
+    setFilters(defaultFilters);
+    setCurrentPage(1);
+  };
 
   const toggleStrategy = (strategy: string) => {
     setFilters((prev) => {
@@ -247,7 +293,7 @@ export function TradesTable({ trades }: Props) {
           <div>
             <h2 className="text-lg font-semibold text-white">Recent Trades</h2>
             <p className="text-sm text-slate-400">
-              Filtered trades for the selected month and year
+              Showing {paginatedTrades.length} of {filteredAndSortedTrades.length} trades
             </p>
           </div>
         </div>
@@ -521,6 +567,9 @@ export function TradesTable({ trades }: Props) {
           <thead>
             <tr className="border-b border-white/10 text-left">
               <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                S.No
+              </th>
+              <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Date
               </th>
               <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -548,85 +597,93 @@ export function TradesTable({ trades }: Props) {
           </thead>
 
           <tbody>
-            {filteredAndSortedTrades.length > 0 ? (
-              filteredAndSortedTrades.map((trade) => (
-                <tr
-                  key={trade._id}
-                  className="border-b border-white/5 transition hover:bg-white/[0.03]"
-                >
-                  <td className="px-5 py-4 text-sm text-slate-300">
-                    {trade.tradeDate || "—"}
-                  </td>
+            {paginatedTrades.length > 0 ? (
+              paginatedTrades.map((trade, index) => {
+                const serialNumber = (currentPage - 1) * TRADES_PER_PAGE + index + 1;
 
-                  <td className="px-5 py-4">
-                    <div>
-                      <p className="font-medium text-white">
-                        {formatTradeSymbol(trade.symbol)}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {getTradeTimeRange(trade)}
-                      </p>
-                    </div>
-                  </td>
+                return (
+                  <tr
+                    key={trade._id}
+                    className="border-b border-white/5 transition hover:bg-white/[0.03]"
+                  >
+                    <td className="px-5 py-4 text-sm text-slate-400">
+                      {serialNumber}
+                    </td>
 
-                  <td className="px-5 py-4">
-                    <span
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
-                        trade.direction === "Long"
-                          ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-300"
-                          : "border-rose-300/20 bg-rose-400/10 text-rose-300"
-                      }`}
-                    >
-                      {trade.direction === "Long" ? (
-                        <ArrowUpRight className="h-3.5 w-3.5" />
-                      ) : (
-                        <ArrowDownRight className="h-3.5 w-3.5" />
-                      )}
-                      {trade.direction}
-                    </span>
-                  </td>
+                    <td className="px-5 py-4 text-sm text-slate-300">
+                      {trade.tradeDate || "—"}
+                    </td>
 
-                  <td className="px-5 py-4 text-sm text-slate-300">
-                    {trade.quantity ?? "—"}
-                  </td>
+                    <td className="px-5 py-4">
+                      <div>
+                        <p className="font-medium text-white">
+                          {formatTradeSymbol(trade.symbol)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {getTradeTimeRange(trade)}
+                        </p>
+                      </div>
+                    </td>
 
-                  <td className="px-5 py-4 text-sm text-slate-300">
-                    {trade.setup || "—"}
-                  </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
+                          trade.direction === "Long"
+                            ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-300"
+                            : "border-rose-300/20 bg-rose-400/10 text-rose-300"
+                        }`}
+                      >
+                        {trade.direction === "Long" ? (
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowDownRight className="h-3.5 w-3.5" />
+                        )}
+                        {trade.direction}
+                      </span>
+                    </td>
 
-                  <td className="px-5 py-4">
-                    <span
-                      className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${getOutcomeTone(
-                        trade.outcome
+                    <td className="px-5 py-4 text-sm text-slate-300">
+                      {trade.quantity ?? "—"}
+                    </td>
+
+                    <td className="px-5 py-4 text-sm text-slate-300">
+                      {trade.setup || "—"}
+                    </td>
+
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${getOutcomeTone(
+                          trade.outcome
+                        )}`}
+                      >
+                        {trade.outcome || "—"}
+                      </span>
+                    </td>
+
+                    <td
+                      className={`px-5 py-4 text-sm font-semibold ${getPnLClass(
+                        trade.pnl
                       )}`}
                     >
-                      {trade.outcome || "—"}
-                    </span>
-                  </td>
+                      {trade.pnl > 0 ? "+" : ""}₹{trade.pnl.toFixed(2)}
+                    </td>
 
-                  <td
-                    className={`px-5 py-4 text-sm font-semibold ${getPnLClass(
-                      trade.pnl
-                    )}`}
-                  >
-                    {trade.pnl > 0 ? "+" : ""}₹{trade.pnl.toFixed(2)}
-                  </td>
-
-                  <td className="px-5 py-4 text-right">
-                    <Link
-                      href={`/trade-details/${trade._id}`}
-                      className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-200 transition hover:border-cyan-300/40 hover:bg-cyan-400/15"
-                    >
-                      <FileText className="h-3.5 w-3.5" />
-                      View details
-                    </Link>
-                  </td>
-                </tr>
-              ))
+                    <td className="px-5 py-4 text-right">
+                      <Link
+                        href={`/trade-details/${trade._id}`}
+                        className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-200 transition hover:border-cyan-300/40 hover:bg-cyan-400/15"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        View details
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })
             ) : (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="px-5 py-10 text-center text-sm text-slate-400"
                 >
                   No trades found for this period.
@@ -638,86 +695,145 @@ export function TradesTable({ trades }: Props) {
       </div>
 
       <div className="space-y-3 p-4 lg:hidden">
-        {filteredAndSortedTrades.length > 0 ? (
-          filteredAndSortedTrades.map((trade) => (
-            <div
-              key={trade._id}
-              className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs text-slate-500">
-                    {trade.tradeDate || "—"}
-                  </p>
-                  <h3 className="mt-1 font-medium text-white">
-                    {formatTradeSymbol(trade.symbol)}
-                  </h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {getTradeTimeRange(trade)}
-                  </p>
+        {paginatedTrades.length > 0 ? (
+          paginatedTrades.map((trade, index) => {
+            const serialNumber = (currentPage - 1) * TRADES_PER_PAGE + index + 1;
+
+            return (
+              <div
+                key={trade._id}
+                className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-cyan-300/80">#{serialNumber}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {trade.tradeDate || "—"}
+                    </p>
+                    <h3 className="mt-1 font-medium text-white">
+                      {formatTradeSymbol(trade.symbol)}
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {getTradeTimeRange(trade)}
+                    </p>
+                  </div>
+
+                  <span
+                    className={`text-sm font-semibold ${getPnLClass(trade.pnl)}`}
+                  >
+                    {trade.pnl > 0 ? "+" : ""}₹{trade.pnl.toFixed(2)}
+                  </span>
                 </div>
 
-                <span
-                  className={`text-sm font-semibold ${getPnLClass(trade.pnl)}`}
-                >
-                  {trade.pnl > 0 ? "+" : ""}₹{trade.pnl.toFixed(2)}
-                </span>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium ${
-                    trade.direction === "Long"
-                      ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-300"
-                      : "border-rose-300/20 bg-rose-400/10 text-rose-300"
-                  }`}
-                >
-                  {trade.direction === "Long" ? (
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  ) : (
-                    <ArrowDownRight className="h-3.5 w-3.5" />
-                  )}
-                  {trade.direction}
-                </span>
-
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-                  Qty: {trade.quantity ?? "—"}
-                </span>
-
-                {trade.setup ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-                    {trade.setup}
-                  </span>
-                ) : null}
-
-                {trade.outcome ? (
+                <div className="mt-4 flex flex-wrap gap-2">
                   <span
-                    className={`rounded-full border px-3 py-1 text-xs font-medium ${getOutcomeTone(
-                      trade.outcome
-                    )}`}
+                    className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium ${
+                      trade.direction === "Long"
+                        ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-300"
+                        : "border-rose-300/20 bg-rose-400/10 text-rose-300"
+                    }`}
                   >
-                    {trade.outcome}
+                    {trade.direction === "Long" ? (
+                      <ArrowUpRight className="h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowDownRight className="h-3.5 w-3.5" />
+                    )}
+                    {trade.direction}
                   </span>
-                ) : null}
-              </div>
 
-              <div className="mt-4">
-                <Link
-                  href={`/trade-details/${trade._id}`}
-                  className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-200"
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                  View details
-                </Link>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                    Qty: {trade.quantity ?? "—"}
+                  </span>
+
+                  {trade.setup ? (
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                      {trade.setup}
+                    </span>
+                  ) : null}
+
+                  {trade.outcome ? (
+                    <span
+                      className={`rounded-full border px-3 py-1 text-xs font-medium ${getOutcomeTone(
+                        trade.outcome
+                      )}`}
+                    >
+                      {trade.outcome}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mt-4">
+                  <Link
+                    href={`/trade-details/${trade._id}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-200"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    View details
+                  </Link>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-6 text-sm text-slate-400">
             No trades found for this period.
           </div>
         )}
       </div>
+
+      {filteredAndSortedTrades.length > TRADES_PER_PAGE ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-4 sm:px-5">
+          <p className="text-xs text-slate-400">
+            Page {currentPage} of {totalPages}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Prev
+            </button>
+
+            {getVisiblePageNumbers(currentPage, totalPages).map((page, index) =>
+              page === -1 ? (
+                <span
+                  key={`ellipsis-${index}`}
+                  className="px-1 text-xs text-slate-500"
+                >
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setCurrentPage(page)}
+                  className={`h-9 min-w-9 rounded-full border px-3 text-xs font-medium ${
+                    currentPage === page
+                      ? "border-cyan-400/70 bg-cyan-500/20 text-cyan-100"
+                      : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20"
+                  }`}
+                >
+                  {page}
+                </button>
+              )
+            )}
+
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+              }
+              disabled={currentPage === totalPages}
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -118,3 +118,43 @@ export async function getTradesByMonthYear(
 
   return rawTrades.map(normalizeTrade);
 }
+
+export async function getAllTrades(): Promise<Trade[]> {
+  const client = getSanityClient();
+
+  const rawTrades = await client.fetch<RawTrade[]>(
+    groq`
+      *[
+        _type == "trade" &&
+        defined(tradeDate)
+      ] | order(tradeDate desc) {
+        _id,
+        tradeDate,
+        fyersTradeId,
+        symbol,
+        direction,
+        quantity,
+        qty,
+        buyPrice,
+        sellPrice,
+        buyTime,
+        sellTime,
+        entryTime,
+        exitTime,
+        pnl,
+        setup,
+        outcome,
+        mistakes,
+        notes,
+        emotionalState,
+        marketCondition,
+        riskAmount,
+        rewardAmount
+      }
+    `,
+    {},
+    { next: { revalidate: 0 } }
+  );
+
+  return rawTrades.map(normalizeTrade);
+}
