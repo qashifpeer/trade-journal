@@ -32,8 +32,8 @@ const tradesByMonthYearQuery = groq`
   *[
     _type == "trade" &&
     defined(tradeDate) &&
-    dateTime(tradeDate) >= dateTime($startDate) &&
-    dateTime(tradeDate) < dateTime($endDate)
+    tradeDate >= $startDate &&
+    tradeDate < $endDate
   ] | order(tradeDate desc) {
     _id,
     tradeDate,
@@ -86,16 +86,21 @@ function normalizeTrade(raw: RawTrade): Trade {
   };
 }
 
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
 function getMonthRange(year: number, month: number) {
   const safeMonth = Math.min(Math.max(month, 1), 12);
 
-  const start = new Date(Date.UTC(year, safeMonth - 1, 1));
-  const end = new Date(Date.UTC(year, safeMonth, 1));
+  const startDate = `${year}-${pad2(safeMonth)}-01`;
 
-  return {
-    startDate: start.toISOString(),
-    endDate: end.toISOString(),
-  };
+  const nextMonth = safeMonth === 12 ? 1 : safeMonth + 1;
+  const nextMonthYear = safeMonth === 12 ? year + 1 : year;
+
+  const endDate = `${nextMonthYear}-${pad2(nextMonth)}-01`;
+
+  return { startDate, endDate };
 }
 
 export async function getTradesByMonthYear(
