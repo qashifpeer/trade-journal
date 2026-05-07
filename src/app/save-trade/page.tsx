@@ -260,7 +260,7 @@ function SaveTradeForm() {
         <h1 className="text-3xl font-bold">
           {isEditMode ? "Edit Trade Journal" : "Save Trade to Journal"}
         </h1>
-       <h1 className="text-3xl font-bold">
+        <h1 className="text-3xl font-bold">
           {isEditMode ? "Edit Trade Journal" : "Save Trade to Journal"}
         </h1>
       </div>
@@ -279,7 +279,9 @@ function SaveTradeForm() {
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm text-slate-400">Symbol</label>
-                <p className="mt-1 break-all font-mono text-lg">{tradeMeta.symbol}</p>
+              <p className="mt-1 break-all font-mono text-lg">
+                {tradeMeta.symbol}
+              </p>
             </div>
 
             <div>
@@ -386,7 +388,7 @@ function SaveTradeForm() {
               <select
                 value={marketCondition}
                 onChange={(e) => setMarketCondition(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900/80 px-4 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30"
               >
                 <option value="">Select...</option>
                 <option value="trending">Trending</option>
@@ -403,7 +405,7 @@ function SaveTradeForm() {
               <select
                 value={emotionalState}
                 onChange={(e) => setEmotionalState(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900/80 px-4 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30"
               >
                 <option value="">Select...</option>
                 <option value="confident">Confident</option>
@@ -421,7 +423,7 @@ function SaveTradeForm() {
               <select
                 value={outcome}
                 onChange={(e) => setOutcome(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900/80 px-4 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30"
               >
                 <option value="">Select...</option>
                 {OUTCOME_OPTIONS.map((opt) => (
@@ -498,7 +500,7 @@ function SaveTradeForm() {
             Cancel
           </button>
 
-         <button
+          <button
             onClick={handleSave}
             disabled={loading}
             className="flex-1 rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-slate-950 transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
@@ -508,8 +510,8 @@ function SaveTradeForm() {
                 ? "Updating..."
                 : "Saving..."
               : isEditMode
-              ? "Update Trade"
-              : "Save to Sanity"}
+                ? "Update Trade"
+                : "Save to Sanity"}
           </button>
         </div>
       </div>
