@@ -112,22 +112,6 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </header>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
-          <StatCard
-            title="Profit / Loss"
-            value={formatInr(stats.totalPnL)}
-            icon={Wallet}
-            accent={grossAppearance.accent}
-            valueClassName={grossAppearance.valueClassName}
-          />
-
-          <StatCard
-            title="Net P&L (Estimated)"
-            value={formatInr(stats.estimatedNetPnL)}
-            hint="For selected month • After estimated charges"
-            icon={IndianRupee}
-            accent={netAppearance.accent}
-            valueClassName={netAppearance.valueClassName}
-          />
 
           <StatCard
             title="Today Net P&L Points"
@@ -173,6 +157,23 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             accent="amber"
           />
         </section>
+
+        <StatCard
+            title="Profit / Loss"
+            value={formatInr(stats.totalPnL)}
+            icon={Wallet}
+            accent={grossAppearance.accent}
+            valueClassName={grossAppearance.valueClassName}
+          />
+
+          <StatCard
+            title="Net P&L (Estimated)"
+            value={formatInr(stats.estimatedNetPnL)}
+            hint="For selected month • After estimated charges"
+            icon={IndianRupee}
+            accent={netAppearance.accent}
+            valueClassName={netAppearance.valueClassName}
+          />
 
         <section className="grid gap-4 xl:grid-cols-3">
           <GroupPerformanceCard
