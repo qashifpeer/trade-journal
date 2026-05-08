@@ -34,17 +34,18 @@ function parseFyersDateToISO(fyersDate: string): string {
 }
 
 const STRATEGY_OPTIONS = [
-  "Inside Bar",
   "Breakout",
-  "SL Hunt",
-  "FIB Retracement",
+  "Inside Bar",
+  "SL Hunting",
+  "FIB Pullback",
   "Reversal",
-  "Pullback",
-  "News Based",
-  "Trend",
+  "Engulfing",
+  "Sniper",
+  "Star Candles",
   "Other",
 ];
 
+          
 const MISTAKE_OPTIONS = [
   "over trading",
   "revenge trading",
@@ -413,6 +414,7 @@ function SaveTradeForm() {
                 <option value="anxious">Anxious</option>
                 <option value="fearful">Fearful</option>
                 <option value="greedy">Greedy</option>
+                <option value="frustrated">Frustrated</option>
               </select>
             </div>
 
