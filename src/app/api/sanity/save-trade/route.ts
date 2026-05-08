@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
 
     const client = getSanityWriteClient();
 
-    if (body.sanityId && typeof body.sanityId === "string") {
+    if (body.sanityId && typeof body.sanityId === "string" && body.sanityId.trim()) {
       const updated = await client
         .patch(body.sanityId)
         .set(sanityDoc)
@@ -109,28 +109,7 @@ export async function POST(request: NextRequest) {
           success: true,
           tradeId: updated._id,
           mode: "updated",
-        },
-        { status: 200 }
-      );
-    }
-
-    const existing = await client.fetch(
-      `*[_type == "trade" && fyersTradeId == $fyersTradeId][0]{ _id }`,
-      { fyersTradeId }
-    );
-
-    if (existing?._id) {
-      const updated = await client
-        .patch(existing._id)
-        .set(sanityDoc)
-        .setIfMissing({ createdAt: body.createdAt || now })
-        .commit();
-
-      return NextResponse.json(
-        {
-          success: true,
-          tradeId: updated._id,
-          mode: "updated",
+          message: `Updated journal entry for ${symbol}.`,
         },
         { status: 200 }
       );
@@ -146,6 +125,7 @@ export async function POST(request: NextRequest) {
         success: true,
         tradeId: created._id,
         mode: "created",
+        message: `Saved journal entry for ${symbol}.`,
       },
       { status: 201 }
     );
