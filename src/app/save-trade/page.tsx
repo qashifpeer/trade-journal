@@ -1,7 +1,6 @@
-// src/app/save-trade/page.tsx
 "use client";
 
-import { Suspense, useMemo, useState, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function parseFyersDateToISO(fyersDate: string): string {
@@ -34,14 +33,11 @@ function parseFyersDateToISO(fyersDate: string): string {
 }
 
 const STRATEGY_OPTIONS = [
-  "Inside Bar",
   "Breakout",
-  "SL Hunt",
-  "FIB Retracement",
+  "SL Hunting",
+  "FIB Pullback",
   "Reversal",
-  "Pullback",
-  "News Based",
-  "Trend",
+  "Sniper",
   "Other",
 ];
 
@@ -87,6 +83,30 @@ type EditableTrade = {
   createdAt?: string;
 };
 
+type TradeMeta = {
+  tradeId: string;
+  symbol: string;
+  direction: string;
+  quantity: number;
+  buyPrice: number;
+  sellPrice: number;
+  buyTime: string;
+  sellTime: string;
+  totalPnl: number;
+};
+
+const EMPTY_TRADE_META: TradeMeta = {
+  tradeId: "",
+  symbol: "",
+  direction: "",
+  quantity: 0,
+  buyPrice: 0,
+  sellPrice: 0,
+  buyTime: "",
+  sellTime: "",
+  totalPnl: 0,
+};
+
 function SaveTradeForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -94,30 +114,11 @@ function SaveTradeForm() {
   const sanityId = searchParams.get("sanityId") || "";
   const isEditMode = Boolean(sanityId);
 
-  const initialFromQuery = useMemo(() => {
-    const quantityParam = searchParams.get("quantity");
-    const buyPriceParam = searchParams.get("buyPrice");
-    const sellPriceParam = searchParams.get("sellPrice");
-    const pnlParam = searchParams.get("totalPnl");
-
-    return {
-      tradeId: searchParams.get("id") || "",
-      symbol: searchParams.get("symbol") || "",
-      direction: searchParams.get("direction") || "",
-      quantity: quantityParam ? Number(quantityParam) : 0,
-      buyPrice: buyPriceParam ? Number(buyPriceParam) : 0,
-      sellPrice: sellPriceParam ? Number(sellPriceParam) : 0,
-      buyTime: searchParams.get("buyTime") || "",
-      sellTime: searchParams.get("sellTime") || "",
-      totalPnl: pnlParam ? Number(pnlParam) : 0,
-    };
-  }, [searchParams]);
-
   const [loading, setLoading] = useState(false);
-  const [pageLoading, setPageLoading] = useState(isEditMode);
+  const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [tradeMeta, setTradeMeta] = useState(initialFromQuery);
+  const [tradeMeta, setTradeMeta] = useState<TradeMeta>(EMPTY_TRADE_META);
 
   const [setup, setSetup] = useState("");
   const [tags, setTags] = useState("");
@@ -128,26 +129,69 @@ function SaveTradeForm() {
   const [marketCondition, setMarketCondition] = useState("");
   const [outcome, setOutcome] = useState("");
 
+  const resetForm = () => {
+    setError("");
+    setSuccessMessage("");
+    setTradeMeta(EMPTY_TRADE_META);
+    setSetup("");
+    setTags("");
+    setNotes("");
+    setMistakes([]);
+    setLessons("");
+    setEmotionalState("");
+    setMarketCondition("");
+    setOutcome("");
+  };
+
   useEffect(() => {
-    if (!isEditMode) {
-      setTradeMeta(initialFromQuery);
-      setPageLoading(false);
-      return;
-    }
+    let cancelled = false;
 
     const loadTrade = async () => {
-      try {
-        setPageLoading(true);
-        setError("");
+      resetForm();
+      setPageLoading(true);
 
-        const res = await fetch(`/api/sanity/trade/${sanityId}`, {
+      if (!isEditMode) {
+        const quantityParam = searchParams.get("quantity");
+        const buyPriceParam = searchParams.get("buyPrice");
+        const sellPriceParam = searchParams.get("sellPrice");
+        const pnlParam = searchParams.get("totalPnl");
+
+        if (cancelled) return;
+
+        setTradeMeta({
+          tradeId: searchParams.get("id") || "",
+          symbol: searchParams.get("symbol") || "",
+          direction: searchParams.get("direction") || "",
+          quantity: quantityParam ? Number(quantityParam) : 0,
+          buyPrice: buyPriceParam ? Number(buyPriceParam) : 0,
+          sellPrice: sellPriceParam ? Number(sellPriceParam) : 0,
+          buyTime: searchParams.get("buyTime") || "",
+          sellTime: searchParams.get("sellTime") || "",
+          totalPnl: pnlParam ? Number(pnlParam) : 0,
+        });
+
+        setPageLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/sanity/trade/${sanityId}?t=${Date.now()}`, {
+          method: "GET",
           cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
         });
 
         const data = await res.json();
 
+        if (cancelled) return;
+
         if (!res.ok || !data.success) {
           setError(data.error || "Failed to load trade");
+          setPageLoading(false);
           return;
         }
 
@@ -174,14 +218,22 @@ function SaveTradeForm() {
         setMarketCondition(trade.marketCondition || "");
         setOutcome(trade.outcome || "");
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load trade");
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load trade");
+        }
       } finally {
-        setPageLoading(false);
+        if (!cancelled) {
+          setPageLoading(false);
+        }
       }
     };
 
     loadTrade();
-  }, [initialFromQuery, isEditMode, sanityId]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sanityId, isEditMode, searchParams]);
 
   const toggleMistake = (value: string) => {
     setMistakes((prev) =>
@@ -245,9 +297,7 @@ function SaveTradeForm() {
       );
 
       setTimeout(() => {
-        router.push(
-          targetTradeId ? `/trade-details/${targetTradeId}` : "/trade-details"
-        );
+        router.push(targetTradeId ? `/trade-details/${targetTradeId}` : "/trade-details");
       }, 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save trade");
@@ -379,9 +429,7 @@ function SaveTradeForm() {
           </div>
 
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-            <h2 className="mb-4 text-lg font-semibold text-white">
-              Additional Details
-            </h2>
+            <h2 className="mb-4 text-lg font-semibold text-white">Additional Details</h2>
 
             <div className="space-y-5">
               <div>
@@ -561,6 +609,9 @@ function SaveTradeForm() {
 }
 
 export default function SaveTradePage() {
+  const searchParams = useSearchParams();
+  const formKey = searchParams.get("sanityId") || searchParams.toString();
+
   return (
     <Suspense
       fallback={
@@ -569,7 +620,7 @@ export default function SaveTradePage() {
         </div>
       }
     >
-      <SaveTradeForm />
+      <SaveTradeForm key={formKey} />
     </Suspense>
   );
 }
