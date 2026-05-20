@@ -1,4 +1,3 @@
-// src/app/trade-details/[id]/page.tsx
 import Link from "next/link";
 import { getSanityWriteClient } from "@/src/lib/sanity.client";
 import DeleteTradeButton from "./DeleteTradeButton";
@@ -54,7 +53,7 @@ async function getTrade(id: string): Promise<TradeDoc | null> {
       createdAt,
       updatedAt
     }`,
-    { id },
+    { id }
   );
 
   return trade ?? null;
@@ -98,7 +97,6 @@ export default async function TradeDetailsPage({
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 text-white md:px-6">
-      {/* Header */}
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Trade Details</h1>
@@ -117,7 +115,7 @@ export default async function TradeDetailsPage({
           </Link>
 
           <Link
-            href={`/save-trade?sanityId=${trade._id}`}
+            href={`/manual-trade/edit/${trade._id}`}
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-600"
           >
             ✏️ Edit
@@ -128,7 +126,6 @@ export default async function TradeDetailsPage({
       </div>
 
       <div className="space-y-6">
-        {/* Core trade info */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
           <h2 className="mb-4 text-lg font-semibold">Core Trade</h2>
 
@@ -215,7 +212,6 @@ export default async function TradeDetailsPage({
           </div>
         </div>
 
-        {/* Journal details */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
           <h2 className="mb-4 text-lg font-semibold">Journal Details</h2>
 
@@ -306,7 +302,6 @@ export default async function TradeDetailsPage({
           </div>
         </div>
 
-        {/* Metadata */}
         {(trade.createdAt || trade.updatedAt) && (
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-500">
             <p>
