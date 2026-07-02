@@ -24,6 +24,7 @@ type IntradayTradeCreateDoc = {
     _key: string
   }>
   indexImage?: SanityImageValue
+  tradesImage?: SanityImageValue
 }
 
 export async function POST(req: Request) {
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
     const notes = body.notes || ''
     const tagTitles: string[] = Array.isArray(body.tags) ? body.tags : []
     const indexImage: SanityImageValue | null = body.indexImage ?? null
+    const tradesImage: SanityImageValue | null = body.tradesImage ?? null
 
     if (!date) {
       return NextResponse.json(
@@ -84,6 +86,9 @@ export async function POST(req: Request) {
 
     if (indexImage?.asset?._ref) {
       doc.indexImage = indexImage
+    }
+    if (tradesImage?.asset?._ref) {
+      doc.tradesImage = tradesImage
     }
 
     const result = await client.create(doc)

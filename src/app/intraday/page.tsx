@@ -21,6 +21,7 @@ type ExistingEntryResponse = {
     notes: string;
     tags: TagItem[];
     indexImageUrl?: string;
+    tradesImageUrl?: string;
   } | null;
 };
 
@@ -56,6 +57,17 @@ function cardPnlBg(value: number) {
   return "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60";
 }
 
+async function readJsonSafely<T>(res: Response): Promise<T | null> {
+  const text = await res.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error("Server returned invalid JSON");
+  }
+}
+
 export default function IntradayPage() {
   const [date, setDate] = useState(getTodayLocalDate());
   const [entryId, setEntryId] = useState<string | null>(null);
@@ -80,7 +92,11 @@ export default function IntradayPage() {
 
   const [indexImageFile, setIndexImageFile] = useState<File | null>(null);
   const [indexImagePreview, setIndexImagePreview] = useState("");
-  const [existingImageUrl, setExistingImageUrl] = useState("");
+  const [existingIndexImageUrl, setExistingIndexImageUrl] = useState("");
+
+  const [tradesImageFile, setTradesImageFile] = useState<File | null>(null);
+  const [tradesImagePreview, setTradesImagePreview] = useState("");
+  const [existingTradesImageUrl, setExistingTradesImageUrl] = useState("");
 
   const normalizeTag = (input: string) => input.trim().toLowerCase();
 
@@ -111,7 +127,8 @@ export default function IntradayPage() {
     tagSuggestions.length === 0 &&
     !hasExactMatch;
 
-  const previewImageSrc = indexImagePreview || existingImageUrl;
+  const previewIndexImageSrc = indexImagePreview || existingIndexImageUrl;
+  const previewTradesImageSrc = tradesImagePreview || existingTradesImageUrl;
 
   const messageStyles =
     messageType === "success"
@@ -143,6 +160,72 @@ export default function IntradayPage() {
   }, [indexImageFile]);
 
   useEffect(() => {
+    if (!tradesImageFile) {
+      setTradesImagePreview("");
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(tradesImageFile);
+    setTradesImagePreview(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [tradesImageFile]);
+
+  function resetImages() {
+    setExistingIndexImageUrl("");
+    setExistingTradesImageUrl("");
+    setIndexImageFile(null);
+    setTradesImageFile(null);
+    setIndexImagePreview("");
+    setTradesImagePreview("");
+  }
+
+  async function loadEntryByDate(selectedDate: string, signal?: AbortSignal) {
+    const res = await fetch(
+      `/api/intraday/by-date?date=${encodeURIComponent(selectedDate)}`,
+      { signal },
+    );
+
+    const data = await readJsonSafely<ExistingEntryResponse>(res);
+
+    if (!res.ok || !data?.ok) {
+      setEntryExists(false);
+      setEntryId(null);
+      resetImages();
+      return;
+    }
+
+    if (data.exists && data.entry) {
+      setEntryExists(true);
+      setEntryId(data.entry._id);
+      setNumberOfTrades(String(data.entry.numberOfTrades ?? ""));
+      setOutcome(String(data.entry.outcome ?? ""));
+      setCharges(String(Math.abs(data.entry.charges ?? 0)));
+      setNotes(data.entry.notes ?? "");
+      setTags(data.entry.tags ?? []);
+      setExistingIndexImageUrl(data.entry.indexImageUrl ?? "");
+      setExistingTradesImageUrl(data.entry.tradesImageUrl ?? "");
+      setIndexImageFile(null);
+      setTradesImageFile(null);
+      setIndexImagePreview("");
+      setTradesImagePreview("");
+      setMessage("Trade Already Saved");
+      setMessageType("warning");
+    } else {
+      setEntryExists(false);
+      setEntryId(null);
+      setNumberOfTrades("");
+      setOutcome("");
+      setCharges("");
+      setNotes("");
+      setTags([]);
+      resetImages();
+      setMessage("");
+      setMessageType("");
+    }
+  }
+
+  useEffect(() => {
     const controller = new AbortController();
 
     async function checkExistingEntry() {
@@ -152,56 +235,11 @@ export default function IntradayPage() {
         setCheckingEntry(true);
         setMessage("");
         setMessageType("");
-
-        const res = await fetch(
-          `/api/intraday/by-date?date=${encodeURIComponent(date)}`,
-          { signal: controller.signal },
-        );
-
-        const data: ExistingEntryResponse = await res.json();
-
-        if (!res.ok || !data.ok) {
-          setEntryExists(false);
-          setEntryId(null);
-          setExistingImageUrl("");
-          setIndexImageFile(null);
-          setIndexImagePreview("");
-          return;
-        }
-
-        if (data.exists && data.entry) {
-          setEntryExists(true);
-          setEntryId(data.entry._id);
-          setNumberOfTrades(String(data.entry.numberOfTrades ?? ""));
-          setOutcome(String(data.entry.outcome ?? ""));
-          setCharges(String(Math.abs(data.entry.charges ?? 0)));
-          setNotes(data.entry.notes ?? "");
-          setTags(data.entry.tags ?? []);
-          setExistingImageUrl(data.entry.indexImageUrl ?? "");
-          setIndexImageFile(null);
-          setIndexImagePreview("");
-          setMessage("Trade Already Saved");
-          setMessageType("warning");
-        } else {
-          setEntryExists(false);
-          setEntryId(null);
-          setNumberOfTrades("");
-          setOutcome("");
-          setCharges("");
-          setNotes("");
-          setTags([]);
-          setExistingImageUrl("");
-          setIndexImageFile(null);
-          setIndexImagePreview("");
-          setMessage("");
-          setMessageType("");
-        }
+        await loadEntryByDate(date, controller.signal);
       } catch {
         setEntryExists(false);
         setEntryId(null);
-        setExistingImageUrl("");
-        setIndexImageFile(null);
-        setIndexImagePreview("");
+        resetImages();
         setMessage("Failed to check existing trade");
         setMessageType("error");
       } finally {
@@ -231,13 +269,14 @@ export default function IntradayPage() {
           { signal: controller.signal },
         );
 
+        const data = await readJsonSafely<{ tags?: TagItem[] }>(res);
+
         if (!res.ok) {
           setTagSuggestions([]);
           return;
         }
 
-        const data = await res.json();
-        setTagSuggestions(Array.isArray(data.tags) ? data.tags : []);
+        setTagSuggestions(Array.isArray(data?.tags) ? data.tags : []);
       } catch {
         setTagSuggestions([]);
       } finally {
@@ -287,18 +326,22 @@ export default function IntradayPage() {
     addTag(createCustomTag(trimmedTagInput));
   };
 
-  async function uploadIndexImage(): Promise<UploadedImageValue | null> {
-    if (!indexImageFile) return null;
+  async function uploadSingleImage(file: File | null) {
+    if (!file) return null;
 
     const formData = new FormData();
-    formData.append("file", indexImageFile);
+    formData.append("file", file);
 
     const res = await fetch("/api/intraday/upload-image", {
       method: "POST",
       body: formData,
     });
 
-    const data = await res.json();
+    const data = await readJsonSafely<{
+      ok?: boolean;
+      assetId?: string;
+      error?: string;
+    }>(res);
 
     if (!res.ok || !data?.ok || !data?.assetId) {
       throw new Error(data?.error || "Failed to upload image");
@@ -310,7 +353,7 @@ export default function IntradayPage() {
         _type: "reference",
         _ref: data.assetId,
       },
-    };
+    } satisfies UploadedImageValue;
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -320,14 +363,17 @@ export default function IntradayPage() {
       setMessage("Trade Already Saved");
       setMessageType("warning");
       return;
-    }
+    }s
 
     try {
       setSaving(true);
       setMessage("");
       setMessageType("");
 
-      const uploadedImage = await uploadIndexImage();
+      const [uploadedIndexImage, uploadedTradesImage] = await Promise.all([
+        uploadSingleImage(indexImageFile),
+        uploadSingleImage(tradesImageFile),
+      ]);
 
       const res = await fetch("/api/intraday", {
         method: "POST",
@@ -340,11 +386,16 @@ export default function IntradayPage() {
           netPnl,
           notes,
           tags: tags.map((tag) => tag.title),
-          indexImage: uploadedImage,
+          indexImage: uploadedIndexImage,
+          tradesImage: uploadedTradesImage,
         }),
       });
 
-      const data = await res.json();
+      const data = await readJsonSafely<{
+        ok?: boolean;
+        id?: string;
+        error?: string;
+      }>(res);
 
       if (res.status === 409) {
         setMessage("Trade Already Saved");
@@ -361,12 +412,8 @@ export default function IntradayPage() {
       }
 
       setEntryExists(true);
-      setEntryId(data.id);
-      if (indexImagePreview) {
-        setExistingImageUrl(indexImagePreview);
-      }
-      setIndexImageFile(null);
-      setIndexImagePreview("");
+      setEntryId(data.id ?? null);
+      await loadEntryByDate(date);
       setMessage("Trade saved successfully");
       setMessageType("success");
     } catch (error) {
@@ -389,7 +436,10 @@ export default function IntradayPage() {
       setMessage("");
       setMessageType("");
 
-      const uploadedImage = await uploadIndexImage();
+      const [uploadedIndexImage, uploadedTradesImage] = await Promise.all([
+        uploadSingleImage(indexImageFile),
+        uploadSingleImage(tradesImageFile),
+      ]);
 
       const res = await fetch(`/api/intraday/${entryId}`, {
         method: "PATCH",
@@ -402,11 +452,15 @@ export default function IntradayPage() {
           netPnl,
           notes,
           tags: tags.map((tag) => tag.title),
-          indexImage: uploadedImage,
+          indexImage: uploadedIndexImage,
+          tradesImage: uploadedTradesImage,
         }),
       });
 
-      const data = await res.json();
+      const data = await readJsonSafely<{
+        ok?: boolean;
+        error?: string;
+      }>(res);
 
       if (!res.ok || !data?.ok) {
         setMessage(data?.error || "Failed to update intraday entry");
@@ -414,11 +468,7 @@ export default function IntradayPage() {
         return;
       }
 
-      if (indexImagePreview) {
-        setExistingImageUrl(indexImagePreview);
-      }
-      setIndexImageFile(null);
-      setIndexImagePreview("");
+      await loadEntryByDate(date);
       setMessage("Trade updated successfully");
       setMessageType("success");
     } catch (error) {
@@ -441,7 +491,7 @@ export default function IntradayPage() {
             Intraday Journal
           </h1>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Record your daily trades, charges, notes, setups, and chart image in one place.
+            Record your daily trades, charges, notes, setups, and chart images in one place.
           </p>
         </div>
 
@@ -598,8 +648,7 @@ export default function IntradayPage() {
 
                           {showEmptyNote ? (
                             <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                              No matching tag found. Click above to use your
-                              typed tag.
+                              No matching tag found. Click above to use your typed tag.
                             </div>
                           ) : null}
                         </>
@@ -611,7 +660,6 @@ export default function IntradayPage() {
 
               <div>
                 <label className={labelBase}>Index Image</label>
-
                 <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
                   <input
                     type="file"
@@ -623,10 +671,10 @@ export default function IntradayPage() {
                     }}
                   />
 
-                  {previewImageSrc ? (
+                  {previewIndexImageSrc ? (
                     <div className="mt-4">
                       <img
-                        src={previewImageSrc}
+                        src={previewIndexImageSrc}
                         alt="Index preview"
                         className="h-44 w-full rounded-xl border border-slate-200 object-cover dark:border-slate-700"
                       />
@@ -634,6 +682,35 @@ export default function IntradayPage() {
                   ) : (
                     <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
                       Upload the index screenshot or chart image for this trading day.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className={labelBase}>Trades Image</label>
+                <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="block w-full text-sm text-black file:mr-4 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-800 dark:text-white dark:file:bg-slate-100 dark:file:text-slate-900 dark:hover:file:bg-slate-200"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setTradesImageFile(file);
+                    }}
+                  />
+
+                  {previewTradesImageSrc ? (
+                    <div className="mt-4">
+                      <img
+                        src={previewTradesImageSrc}
+                        alt="Trades preview"
+                        className="h-44 w-full rounded-xl border border-slate-200 object-cover dark:border-slate-700"
+                      />
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                      Upload the trades screenshot for this trading day.
                     </p>
                   )}
                 </div>
@@ -731,12 +808,29 @@ export default function IntradayPage() {
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/70">
                   <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Image
+                    Index Image
                   </p>
-                  {previewImageSrc ? (
+                  {previewIndexImageSrc ? (
                     <img
-                      src={previewImageSrc}
+                      src={previewIndexImageSrc}
                       alt="Index snapshot"
+                      className="mt-2 h-40 w-full rounded-xl object-cover"
+                    />
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                      No image selected.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/70">
+                  <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Trades Image
+                  </p>
+                  {previewTradesImageSrc ? (
+                    <img
+                      src={previewTradesImageSrc}
+                      alt="Trades snapshot"
                       className="mt-2 h-40 w-full rounded-xl object-cover"
                     />
                   ) : (
@@ -758,8 +852,7 @@ export default function IntradayPage() {
                 <span className="font-medium text-amber-700 dark:text-amber-300">
                   Trade Already Saved
                 </span>
-                . On first save of a new date, it shows a success message
-                instead.
+                . On first save of a new date, it shows a success message instead.
               </p>
             </div>
           </div>

@@ -27,7 +27,9 @@ export async function GET(req: Request) {
           title,
           value
         },
-        "indexImageUrl": indexImage.asset->url
+        "indexImageUrl": indexImage.asset->url,
+        "tradesImageUrl": tradesImage.asset->url,
+
       }
     `
 

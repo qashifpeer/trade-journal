@@ -26,7 +26,9 @@ type IntradayTradePatchInput = {
     _ref: string
     _key: string
   }>
-  indexImage?: SanityImageValue
+  indexImage?: SanityImageValue,
+  tradesImage?: SanityImageValue,
+
 }
 
 export async function PATCH(req: Request, context: RouteContext) {
@@ -48,6 +50,7 @@ export async function PATCH(req: Request, context: RouteContext) {
     const notes = body.notes || ''
     const tagTitles: string[] = Array.isArray(body.tags) ? body.tags : []
     const indexImage: SanityImageValue | null = body.indexImage ?? null
+    const tradesImage: SanityImageValue | null = body.tradesImage ?? null
 
     if (!date) {
       return NextResponse.json(
@@ -100,6 +103,9 @@ export async function PATCH(req: Request, context: RouteContext) {
 
     if (indexImage?.asset?._ref) {
       patchData.indexImage = indexImage
+    }
+    if (tradesImage?.asset?._ref) {
+      patchData.tradesImage = tradesImage
     }
 
     const updated = await client.patch(id).set(patchData).commit()
