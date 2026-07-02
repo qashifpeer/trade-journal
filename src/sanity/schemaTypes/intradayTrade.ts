@@ -55,6 +55,14 @@ export const intradayTrade = defineType({
       options: {
         hotspot: true,
       },
-    })
+    }),
+     defineField({
+      name: 'tradesImage',
+      title: 'Trades Image',
+      type: 'image',
+      options: {
+        hotspot: true,
+      },
+    }),
   ],
 })
