@@ -363,7 +363,7 @@ export default function IntradayPage() {
       setMessage("Trade Already Saved");
       setMessageType("warning");
       return;
-    }s
+    }
 
     try {
       setSaving(true);
