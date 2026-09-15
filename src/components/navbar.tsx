@@ -6,8 +6,8 @@ import { useState } from 'react'
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard' },
-  { label: 'My Trades', href: '/daywise' },
-  { label: 'Save Trade', href: '/intraday' },
+  { label: 'My Trades', href: '/trade-list' },
+  { label: 'Save Trade', href: '/save-trade' },
 
 ]
 
