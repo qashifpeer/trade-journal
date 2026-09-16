@@ -51,6 +51,12 @@ export const savedTrade = defineType({
       type: "number",
       readOnly: true,
     }),
+    defineField({
+      name: "riskTaken",
+      title: "Risk Taken",
+      type: "number",
+      validation: (Rule) => Rule.min(0),
+    }),
 
     defineField({
       name: "tags",
