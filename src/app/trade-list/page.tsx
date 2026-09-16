@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 
 type TradeTag = {
   _id: string;
@@ -12,8 +20,11 @@ type TradeListItem = {
   _id: string;
   date: string;
   trade: string;
+  outcome: number;
+  riskTaken: number;
   netPnl: number;
   charges: number;
+  notes: string;
   tags: TradeTag[];
 };
 
@@ -23,20 +34,52 @@ type TradesResponse = {
   error?: string;
 };
 
+type TradeMutationResponse = {
+  ok?: boolean;
+  trade?: TradeListItem;
+  error?: string;
+};
+
 type MessageType = "success" | "error" | "";
 
 type TradeTotals = {
   totalTrades: number;
   netPnl: number;
   charges: number;
+  riskTaken: number;
 };
+
+type EditForm = {
+  date: string;
+  trade: string;
+  outcome: string;
+  riskTaken: string;
+  charges: string;
+  notes: string;
+  tags: string;
+};
+
+const INPUT_BASE =
+  "rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-slate-500";
+
+const ICON_BUTTON_BASE =
+  "inline-flex h-9 w-9 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-50";
+
+const CARD_BASE =
+  "rounded-2xl border p-5 shadow-sm";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(Number(value) || 0);
+}
+
+function getNumber(value: unknown) {
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
 function pnlColor(value: number) {
@@ -75,6 +118,34 @@ function pnlBadgeClass(value: number) {
   return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
 }
 
+function riskCardClass() {
+  return "border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30";
+}
+
+function readMessageClass(type: MessageType) {
+  if (type === "success") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300";
+  }
+
+  return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300";
+}
+
+async function readJsonSafely<T>(
+  response: Response,
+): Promise<T | null> {
+  const text = await response.text();
+
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error("Server returned invalid JSON");
+  }
+}
+
 function DeleteIcon() {
   return (
     <svg
@@ -85,16 +156,8 @@ function DeleteIcon() {
       className="h-5 w-5"
       aria-hidden="true"
     >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M3 6h18"
-      />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M8 6V4h8v2"
-      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 6V4h8v2" />
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -109,6 +172,524 @@ function DeleteIcon() {
   );
 }
 
+function EditIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18 6L6 18" />
+    </svg>
+  );
+}
+
+function TradeTags({ tags }: { tags?: TradeTag[] }) {
+  if (!tags?.length) {
+    return (
+      <span className="text-sm text-slate-400">
+        No tags
+      </span>
+    );
+  }
+
+  return (
+    <>
+      {tags.map((tag) => (
+        <span
+          key={`${tag._id}-${tag.value}`}
+          className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+        >
+          {tag.title}
+        </span>
+      ))}
+    </>
+  );
+}
+
+type TradeActionsProps = {
+  trade: TradeListItem;
+  isDeleting: boolean;
+  disabled: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+};
+
+function TradeActions({
+  trade,
+  isDeleting,
+  disabled,
+  onEdit,
+  onDelete,
+}: TradeActionsProps) {
+  return (
+    <div className="flex gap-1">
+      <button
+        type="button"
+        aria-label={`Edit ${trade.trade}`}
+        title="Edit trade"
+        disabled={disabled}
+        onClick={onEdit}
+        className={`${ICON_BUTTON_BASE} text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950/40`}
+      >
+        <EditIcon />
+      </button>
+
+      <button
+        type="button"
+        aria-label={`Delete ${trade.trade}`}
+        title="Delete trade"
+        disabled={disabled}
+        onClick={onDelete}
+        className={`${ICON_BUTTON_BASE} text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40`}
+      >
+        {isDeleting ? (
+          <span className="text-xs">...</span>
+        ) : (
+          <DeleteIcon />
+        )}
+      </button>
+    </div>
+  );
+}
+
+type SummaryCardProps = {
+  label: string;
+  value: ReactNode;
+  description?: string;
+  className?: string;
+};
+
+function SummaryCard({
+  label,
+  value,
+  description,
+  className = "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
+}: SummaryCardProps) {
+  return (
+    <div className={`${CARD_BASE} ${className}`}>
+      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+        {label}
+      </p>
+
+      <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100">
+        {value}
+      </p>
+
+      {description ? (
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {description}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+type EditTradeModalProps = {
+  form: EditForm;
+  saving: boolean;
+  onChange: (
+    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onClose: () => void;
+};
+
+function EditTradeModal({
+  form,
+  saving,
+  onChange,
+  onSubmit,
+  onClose,
+}: EditTradeModalProps) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-trade-title"
+    >
+      <div className="max-h-[95vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl dark:bg-slate-900">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <h2
+              id="edit-trade-title"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
+              Edit Trade
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Update trade details, risk, tags, and notes.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            aria-label="Close edit dialog"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div>
+            <label
+              htmlFor="edit-date"
+              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
+            >
+              Date
+            </label>
+
+            <input
+              id="edit-date"
+              name="date"
+              type="date"
+              value={form.date}
+              onChange={onChange}
+              className={`${INPUT_BASE} w-full`}
+              required
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="edit-trade"
+              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
+            >
+              Contract
+            </label>
+
+            <input
+              id="edit-trade"
+              name="trade"
+              type="text"
+              value={form.trade}
+              onChange={onChange}
+              className={`${INPUT_BASE} w-full`}
+              placeholder="Example: NIFTY 24000 CE"
+              required
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="edit-outcome"
+                className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
+              >
+                Outcome
+              </label>
+
+              <input
+                id="edit-outcome"
+                name="outcome"
+                type="number"
+                step="0.01"
+                value={form.outcome}
+                onChange={onChange}
+                className={`${INPUT_BASE} w-full`}
+                required
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-riskTaken"
+                className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
+              >
+                Risk Taken
+              </label>
+
+              <input
+                id="edit-riskTaken"
+                name="riskTaken"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.riskTaken}
+                onChange={onChange}
+                className={`${INPUT_BASE} w-full`}
+                placeholder="1000"
+                required
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-charges"
+                className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
+              >
+                Charges
+              </label>
+
+              <input
+                id="edit-charges"
+                name="charges"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.charges}
+                onChange={onChange}
+                className={`${INPUT_BASE} w-full`}
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="edit-tags"
+              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
+            >
+              Tags
+            </label>
+
+            <input
+              id="edit-tags"
+              name="tags"
+              type="text"
+              value={form.tags}
+              onChange={onChange}
+              className={`${INPUT_BASE} w-full`}
+              placeholder="breakout, profitable, expiry-day"
+            />
+
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Separate multiple tags with commas.
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="edit-notes"
+              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
+            >
+              Notes
+            </label>
+
+            <textarea
+              id="edit-notes"
+              name="notes"
+              rows={4}
+              value={form.notes}
+              onChange={onChange}
+              className={`${INPUT_BASE} w-full resize-y`}
+              placeholder="Add notes about this trade..."
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+type TradeTableRowProps = {
+  trade: TradeListItem;
+  actionsDisabled: boolean;
+  isDeleting: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+};
+
+function TradeTableRow({
+  trade,
+  actionsDisabled,
+  isDeleting,
+  onEdit,
+  onDelete,
+}: TradeTableRowProps) {
+  return (
+    <tr className="border-b border-slate-100 last:border-0 dark:border-slate-800">
+      <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+        {trade.date}
+      </td>
+
+      <td className="max-w-[280px] px-5 py-4">
+        <p className="break-words font-medium text-slate-900 dark:text-slate-100">
+          {trade.trade}
+        </p>
+
+        {trade.notes ? (
+          <p className="mt-1 max-w-[280px] truncate text-xs text-slate-500 dark:text-slate-400">
+            {trade.notes}
+          </p>
+        ) : null}
+      </td>
+
+      <td className="whitespace-nowrap px-5 py-4">
+        <span
+          className={`inline-flex rounded-full px-2.5 py-1 text-sm font-semibold ${pnlBadgeClass(
+            trade.netPnl,
+          )}`}
+        >
+          <span className={pnlColor(trade.netPnl)}>
+            {formatCurrency(trade.netPnl)}
+          </span>
+        </span>
+      </td>
+
+      <td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-amber-700 dark:text-amber-300">
+        {formatCurrency(trade.riskTaken)}
+      </td>
+
+      <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+        {formatCurrency(trade.charges)}
+      </td>
+
+      <td className="px-5 py-4">
+        <div className="flex max-w-[220px] flex-wrap gap-1.5">
+          <TradeTags tags={trade.tags} />
+        </div>
+      </td>
+
+      <td className="px-5 py-4 text-right">
+        <div className="flex justify-end">
+          <TradeActions
+            trade={trade}
+            isDeleting={isDeleting}
+            disabled={actionsDisabled}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+type TradeMobileCardProps = {
+  trade: TradeListItem;
+  actionsDisabled: boolean;
+  isDeleting: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+};
+
+function TradeMobileCard({
+  trade,
+  actionsDisabled,
+  isDeleting,
+  onEdit,
+  onDelete,
+}: TradeMobileCardProps) {
+  return (
+    <article className="p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {trade.date}
+          </p>
+
+          <h3 className="mt-1 break-words font-semibold text-slate-900 dark:text-slate-100">
+            {trade.trade}
+          </h3>
+        </div>
+
+        <TradeActions
+          trade={trade}
+          isDeleting={isDeleting}
+          disabled={actionsDisabled}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      </div>
+
+      {trade.notes ? (
+        <p className="mt-3 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-400">
+          {trade.notes}
+        </p>
+      ) : null}
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Net P&amp;L
+          </p>
+
+          <p
+            className={`mt-1 font-semibold ${pnlColor(
+              trade.netPnl,
+            )}`}
+          >
+            {formatCurrency(trade.netPnl)}
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-amber-50 p-3 dark:bg-amber-950/30">
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            Risk Taken
+          </p>
+
+          <p className="mt-1 font-semibold text-amber-700 dark:text-amber-300">
+            {formatCurrency(trade.riskTaken)}
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Charges
+          </p>
+
+          <p className="mt-1 font-semibold text-slate-700 dark:text-slate-200">
+            {formatCurrency(trade.charges)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <TradeTags tags={trade.tags} />
+      </div>
+    </article>
+  );
+}
+
 export default function TradeListPage() {
   const [trades, setTrades] = useState<TradeListItem[]>([]);
   const [startDate, setStartDate] = useState("");
@@ -116,37 +697,63 @@ export default function TradeListPage() {
 
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState<MessageType>("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
-  const inputBase =
-    "rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-slate-500";
+  const [editingTrade, setEditingTrade] =
+    useState<TradeListItem | null>(null);
+
+  const [editForm, setEditForm] = useState<EditForm>({
+    date: "",
+    trade: "",
+    outcome: "",
+    riskTaken: "",
+    charges: "",
+    notes: "",
+    tags: "",
+  });
+
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] =
+    useState<MessageType>("");
 
   const totals = useMemo<TradeTotals>(() => {
     return trades.reduce(
-      (summary, trade) => {
-        summary.totalTrades += 1;
-        summary.netPnl += Number(trade.netPnl) || 0;
-        summary.charges += Number(trade.charges) || 0;
-
-        return summary;
-      },
+      (summary, trade) => ({
+        totalTrades: summary.totalTrades + 1,
+        netPnl: summary.netPnl + getNumber(trade.netPnl),
+        charges: summary.charges + getNumber(trade.charges),
+        riskTaken:
+          summary.riskTaken + getNumber(trade.riskTaken),
+      }),
       {
         totalTrades: 0,
         netPnl: 0,
         charges: 0,
+        riskTaken: 0,
       },
     );
   }, [trades]);
+
+  const showMessage = useCallback(
+    (text: string, type: MessageType) => {
+      setMessage(text);
+      setMessageType(type);
+    },
+    [],
+  );
 
   const loadTrades = useCallback(async () => {
     if (startDate && endDate && startDate > endDate) {
       setTrades([]);
       setLoading(false);
-      setMessage("Start date cannot be later than end date");
-      setMessageType("error");
+      showMessage(
+        "Start date cannot be later than end date",
+        "error",
+      );
       return;
     }
+
+    const controller = new AbortController();
 
     try {
       setLoading(true);
@@ -163,36 +770,57 @@ export default function TradeListPage() {
         params.set("endDate", endDate);
       }
 
-      const queryString = params.toString();
+      const query = params.toString();
 
       const response = await fetch(
-        `/api/savetrade${queryString ? `?${queryString}` : ""}`,
+        `/api/savetrade${query ? `?${query}` : ""}`,
         {
           method: "GET",
           cache: "no-store",
+          signal: controller.signal,
         },
       );
 
-      const data = (await response.json()) as TradesResponse;
+      const data = await readJsonSafely<TradesResponse>(
+        response,
+      );
 
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Failed to load trades");
+      if (!response.ok || !data?.ok) {
+        throw new Error(
+          data?.error || "Failed to load trades",
+        );
       }
 
-      setTrades(Array.isArray(data.trades) ? data.trades : []);
-    } catch (error) {
-      setTrades([]);
-      setMessage(
-        error instanceof Error ? error.message : "Failed to load trades",
+      setTrades(
+        Array.isArray(data.trades) ? data.trades : [],
       );
-      setMessageType("error");
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        error.name === "AbortError"
+      ) {
+        return;
+      }
+
+      setTrades([]);
+
+      showMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to load trades",
+        "error",
+      );
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
-  }, [startDate, endDate]);
+
+    return () => controller.abort();
+  }, [endDate, showMessage, startDate]);
 
   useEffect(() => {
-    loadTrades();
+    void loadTrades();
   }, [loadTrades]);
 
   function clearFilters() {
@@ -200,7 +828,179 @@ export default function TradeListPage() {
     setEndDate("");
   }
 
-  async function handleDelete(tradeId: string, tradeName: string) {
+  function openEditModal(trade: TradeListItem) {
+    setEditingTrade(trade);
+
+    setEditForm({
+      date: trade.date ?? "",
+      trade: trade.trade ?? "",
+      outcome: String(trade.outcome ?? ""),
+      riskTaken: String(trade.riskTaken ?? ""),
+      charges: String(trade.charges ?? ""),
+      notes: trade.notes ?? "",
+      tags:
+        trade.tags?.map((tag) => tag.title).join(", ") ?? "",
+    });
+
+    setMessage("");
+    setMessageType("");
+  }
+
+  function closeEditModal() {
+    if (!savingEdit) {
+      setEditingTrade(null);
+    }
+  }
+
+  function handleEditInputChange(
+    event: ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement
+    >,
+  ) {
+    const { name, value } = event.target;
+
+    setEditForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  }
+
+  async function handleEditSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    if (!editingTrade) {
+      return;
+    }
+
+    const date = editForm.date;
+    const trade = editForm.trade.trim();
+    const outcome = Number(editForm.outcome);
+    const riskTaken = Math.abs(
+      Number(editForm.riskTaken),
+    );
+    const charges = Math.abs(Number(editForm.charges));
+    const notes = editForm.notes.trim();
+
+    const tags = editForm.tags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+
+    if (!date || !trade) {
+      showMessage(
+        "Date and contract are required",
+        "error",
+      );
+      return;
+    }
+
+    if (!Number.isFinite(outcome)) {
+      showMessage(
+        "Outcome must be a valid number",
+        "error",
+      );
+      return;
+    }
+
+    if (!Number.isFinite(riskTaken)) {
+      showMessage(
+        "Risk taken must be a valid number",
+        "error",
+      );
+      return;
+    }
+
+    if (riskTaken < 0) {
+      showMessage(
+        "Risk taken cannot be negative",
+        "error",
+      );
+      return;
+    }
+
+    if (!Number.isFinite(charges)) {
+      showMessage(
+        "Charges must be a valid number",
+        "error",
+      );
+      return;
+    }
+
+    const netPnl = outcome - charges;
+
+    try {
+      setSavingEdit(true);
+      setMessage("");
+      setMessageType("");
+
+      const response = await fetch(
+        `/api/savetrade/${editingTrade._id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            date,
+            trade,
+            outcome,
+            riskTaken,
+            charges,
+            netPnl,
+            notes,
+            tags,
+          }),
+        },
+      );
+
+      const data =
+        await readJsonSafely<TradeMutationResponse>(
+          response,
+        );
+
+      if (!response.ok || !data?.ok) {
+        throw new Error(
+          data?.error || "Failed to update trade",
+        );
+      }
+
+      if (!data.trade) {
+        throw new Error(
+          "Updated trade was not returned by the API",
+        );
+      }
+
+      setTrades((currentTrades) =>
+        currentTrades.map((currentTrade) =>
+          currentTrade._id === editingTrade._id
+            ? data.trade!
+            : currentTrade,
+        ),
+      );
+
+      setEditingTrade(null);
+      showMessage(
+        "Trade updated successfully",
+        "success",
+      );
+    } catch (error) {
+      showMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to update trade",
+        "error",
+      );
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleDelete(
+    tradeId: string,
+    tradeName: string,
+  ) {
     const confirmed = window.confirm(
       `Are you sure you want to delete "${tradeName}"? This action cannot be undone.`,
     );
@@ -214,34 +1014,48 @@ export default function TradeListPage() {
       setMessage("");
       setMessageType("");
 
-      const response = await fetch(`/api/savetrade/${tradeId}`, {
-        method: "DELETE",
-      });
+      const response = await fetch(
+        `/api/savetrade/${tradeId}`,
+        {
+          method: "DELETE",
+        },
+      );
 
-      const data = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-      };
+      const data =
+        await readJsonSafely<TradeMutationResponse>(
+          response,
+        );
 
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Failed to delete trade");
+      if (!response.ok || !data?.ok) {
+        throw new Error(
+          data?.error || "Failed to delete trade",
+        );
       }
 
       setTrades((currentTrades) =>
-        currentTrades.filter((trade) => trade._id !== tradeId),
+        currentTrades.filter(
+          (trade) => trade._id !== tradeId,
+        ),
       );
 
-      setMessage("Trade deleted successfully");
-      setMessageType("success");
-    } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Failed to delete trade",
+      showMessage(
+        "Trade deleted successfully",
+        "success",
       );
-      setMessageType("error");
+    } catch (error) {
+      showMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete trade",
+        "error",
+      );
     } finally {
       setDeletingId(null);
     }
   }
+
+  const actionsDisabled =
+    savingEdit || deletingId !== null;
 
   return (
     <main className="min-h-screen bg-slate-100 dark:bg-slate-950">
@@ -252,7 +1066,7 @@ export default function TradeListPage() {
           </h1>
 
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            View, filter, and manage your saved trades.
+            View, filter, edit, and manage your saved trades.
           </p>
         </header>
 
@@ -280,8 +1094,10 @@ export default function TradeListPage() {
                 id="start-date"
                 type="date"
                 value={startDate}
-                onChange={(event) => setStartDate(event.target.value)}
-                className={`${inputBase} w-full`}
+                onChange={(event) =>
+                  setStartDate(event.target.value)
+                }
+                className={`${INPUT_BASE} w-full`}
               />
             </div>
 
@@ -297,8 +1113,10 @@ export default function TradeListPage() {
                 id="end-date"
                 type="date"
                 value={endDate}
-                onChange={(event) => setEndDate(event.target.value)}
-                className={`${inputBase} w-full`}
+                onChange={(event) =>
+                  setEndDate(event.target.value)
+                }
+                className={`${INPUT_BASE} w-full`}
               />
             </div>
 
@@ -312,66 +1130,40 @@ export default function TradeListPage() {
           </div>
         </section>
 
-        <section className="mb-6 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-              Total Trades
-            </p>
+        <section className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryCard
+            label="Total Trades"
+            value={totals.totalTrades}
+            description="Active date range"
+          />
 
-            <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {totals.totalTrades}
-            </p>
+          <SummaryCard
+            label="Total Net P&L"
+            value={formatCurrency(totals.netPnl)}
+            description="After charges"
+            className={`${pnlCardClass(totals.netPnl)}`}
+          />
 
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Based on the active date range
-            </p>
-          </div>
+          <SummaryCard
+            label="Total Risk Taken"
+            value={formatCurrency(totals.riskTaken)}
+            description="Combined risk"
+            className={riskCardClass()}
+          />
 
-          <div
-            className={`rounded-2xl border p-5 shadow-sm ${pnlCardClass(
-              totals.netPnl,
-            )}`}
-          >
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-              Total Net P&amp;L
-            </p>
-
-            <p
-              className={`mt-2 text-2xl font-bold ${pnlColor(
-                totals.netPnl,
-              )}`}
-            >
-              {formatCurrency(totals.netPnl)}
-            </p>
-
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Based on the active date range
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-              Total Charges
-            </p>
-
-            <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {formatCurrency(totals.charges)}
-            </p>
-
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Based on the active date range
-            </p>
-          </div>
+          <SummaryCard
+            label="Total Charges"
+            value={formatCurrency(totals.charges)}
+            description="Brokerage and costs"
+          />
         </section>
 
         {message ? (
           <div
             role="status"
-            className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
-              messageType === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
-                : "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300"
-            }`}
+            className={`mb-6 rounded-xl border px-4 py-3 text-sm ${readMessageClass(
+              messageType,
+            )}`}
           >
             {message}
           </div>
@@ -395,7 +1187,7 @@ export default function TradeListPage() {
           ) : (
             <>
               <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[850px] border-collapse">
+                <table className="w-full min-w-[1050px] border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-left dark:border-slate-800 dark:bg-slate-800/70">
                       <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -408,6 +1200,10 @@ export default function TradeListPage() {
 
                       <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Net P&amp;L
+                      </th>
+
+                      <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Risk Taken
                       </th>
 
                       <th className="px-5 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -426,74 +1222,23 @@ export default function TradeListPage() {
 
                   <tbody>
                     {trades.map((trade) => (
-                      <tr
+                      <TradeTableRow
                         key={trade._id}
-                        className="border-b border-slate-100 last:border-0 dark:border-slate-800"
-                      >
-                        <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
-                          {trade.date}
-                        </td>
-
-                        <td className="max-w-[280px] px-5 py-4">
-                          <p className="break-words font-medium text-slate-900 dark:text-slate-100">
-                            {trade.trade}
-                          </p>
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4">
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-sm font-semibold ${pnlBadgeClass(
-                              trade.netPnl,
-                            )}`}
-                          >
-                            <span className={pnlColor(trade.netPnl)}>
-                              {formatCurrency(trade.netPnl)}
-                            </span>
-                          </span>
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
-                          {formatCurrency(trade.charges)}
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="flex max-w-[220px] flex-wrap gap-1.5">
-                            {trade.tags?.length ? (
-                              trade.tags.map((tag) => (
-                                <span
-                                  key={`${trade._id}-${tag._id}`}
-                                  className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
-                                >
-                                  {tag.title}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-sm text-slate-400">
-                                No tags
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-4 text-right">
-                          <button
-                            type="button"
-                            aria-label={`Delete ${trade.trade}`}
-                            title="Delete trade"
-                            disabled={deletingId === trade._id}
-                            onClick={() =>
-                              handleDelete(trade._id, trade.trade)
-                            }
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
-                          >
-                            {deletingId === trade._id ? (
-                              <span className="text-xs">...</span>
-                            ) : (
-                              <DeleteIcon />
-                            )}
-                          </button>
-                        </td>
-                      </tr>
+                        trade={trade}
+                        actionsDisabled={actionsDisabled}
+                        isDeleting={
+                          deletingId === trade._id
+                        }
+                        onEdit={() =>
+                          openEditModal(trade)
+                        }
+                        onDelete={() =>
+                          handleDelete(
+                            trade._id,
+                            trade.trade,
+                          )
+                        }
+                      />
                     ))}
                   </tbody>
                 </table>
@@ -501,85 +1246,39 @@ export default function TradeListPage() {
 
               <div className="divide-y divide-slate-200 md:hidden dark:divide-slate-800">
                 {trades.map((trade) => (
-                  <article key={trade._id} className="p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {trade.date}
-                        </p>
-
-                        <h3 className="mt-1 break-words font-semibold text-slate-900 dark:text-slate-100">
-                          {trade.trade}
-                        </h3>
-                      </div>
-
-                      <button
-                        type="button"
-                        aria-label={`Delete ${trade.trade}`}
-                        title="Delete trade"
-                        disabled={deletingId === trade._id}
-                        onClick={() =>
-                          handleDelete(trade._id, trade.trade)
-                        }
-                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
-                      >
-                        {deletingId === trade._id ? (
-                          <span className="text-xs">...</span>
-                        ) : (
-                          <DeleteIcon />
-                        )}
-                      </button>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                      <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Net P&amp;L
-                        </p>
-
-                        <p
-                          className={`mt-1 font-semibold ${pnlColor(
-                            trade.netPnl,
-                          )}`}
-                        >
-                          {formatCurrency(trade.netPnl)}
-                        </p>
-                      </div>
-
-                      <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Charges
-                        </p>
-
-                        <p className="mt-1 font-semibold text-slate-700 dark:text-slate-200">
-                          {formatCurrency(trade.charges)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {trade.tags?.length ? (
-                        trade.tags.map((tag) => (
-                          <span
-                            key={`${trade._id}-${tag._id}`}
-                            className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
-                          >
-                            {tag.title}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-sm text-slate-400">
-                          No tags
-                        </span>
-                      )}
-                    </div>
-                  </article>
+                  <TradeMobileCard
+                    key={trade._id}
+                    trade={trade}
+                    actionsDisabled={actionsDisabled}
+                    isDeleting={
+                      deletingId === trade._id
+                    }
+                    onEdit={() =>
+                      openEditModal(trade)
+                    }
+                    onDelete={() =>
+                      handleDelete(
+                        trade._id,
+                        trade.trade,
+                      )
+                    }
+                  />
                 ))}
               </div>
             </>
           )}
         </section>
       </div>
+
+      {editingTrade ? (
+        <EditTradeModal
+          form={editForm}
+          saving={savingEdit}
+          onChange={handleEditInputChange}
+          onSubmit={handleEditSubmit}
+          onClose={closeEditModal}
+        />
+      ) : null}
     </main>
   );
 }
