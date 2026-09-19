@@ -65,8 +65,7 @@ const INPUT_BASE =
 const ICON_BUTTON_BASE =
   "inline-flex h-9 w-9 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-50";
 
-const CARD_BASE =
-  "rounded-2xl border p-5 shadow-sm";
+const CARD_BASE = "rounded-2xl border p-5 shadow-sm";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -78,8 +77,12 @@ function formatCurrency(value: number) {
 
 function getNumber(value: unknown) {
   const numberValue = Number(value);
-
   return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function normalizeTagValue(tag: TradeTag) {
+  return tag.value?.trim().toLowerCase() ||
+    tag.title.trim().toLowerCase();
 }
 
 function pnlColor(value: number) {
@@ -122,7 +125,7 @@ function riskCardClass() {
   return "border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30";
 }
 
-function readMessageClass(type: MessageType) {
+function messageClass(type: MessageType) {
   if (type === "success") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300";
   }
@@ -280,7 +283,7 @@ function TradeActions({
 type SummaryCardProps = {
   label: string;
   value: ReactNode;
-  description?: string;
+  description: string;
   className?: string;
 };
 
@@ -300,11 +303,9 @@ function SummaryCard({
         {value}
       </p>
 
-      {description ? (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          {description}
-        </p>
-      ) : null}
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {description}
+      </p>
     </div>
   );
 }
@@ -530,21 +531,21 @@ function EditTradeModal({
   );
 }
 
-type TradeTableRowProps = {
+type TradeRowProps = {
   trade: TradeListItem;
-  actionsDisabled: boolean;
+  disabled: boolean;
   isDeleting: boolean;
   onEdit: () => void;
   onDelete: () => void;
 };
 
-function TradeTableRow({
+function TradeRow({
   trade,
-  actionsDisabled,
+  disabled,
   isDeleting,
   onEdit,
   onDelete,
-}: TradeTableRowProps) {
+}: TradeRowProps) {
   return (
     <tr className="border-b border-slate-100 last:border-0 dark:border-slate-800">
       <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
@@ -594,7 +595,7 @@ function TradeTableRow({
           <TradeActions
             trade={trade}
             isDeleting={isDeleting}
-            disabled={actionsDisabled}
+            disabled={disabled}
             onEdit={onEdit}
             onDelete={onDelete}
           />
@@ -604,21 +605,21 @@ function TradeTableRow({
   );
 }
 
-type TradeMobileCardProps = {
+type TradeCardProps = {
   trade: TradeListItem;
-  actionsDisabled: boolean;
+  disabled: boolean;
   isDeleting: boolean;
   onEdit: () => void;
   onDelete: () => void;
 };
 
-function TradeMobileCard({
+function TradeCard({
   trade,
-  actionsDisabled,
+  disabled,
   isDeleting,
   onEdit,
   onDelete,
-}: TradeMobileCardProps) {
+}: TradeCardProps) {
   return (
     <article className="p-4">
       <div className="flex items-start justify-between gap-4">
@@ -635,7 +636,7 @@ function TradeMobileCard({
         <TradeActions
           trade={trade}
           isDeleting={isDeleting}
-          disabled={actionsDisabled}
+          disabled={disabled}
           onEdit={onEdit}
           onDelete={onDelete}
         />
@@ -694,9 +695,13 @@ export default function TradeListPage() {
   const [trades, setTrades] = useState<TradeListItem[]>([]);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [selectedTagValues, setSelectedTagValues] =
+    useState<string[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(
+    null,
+  );
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [editingTrade, setEditingTrade] =
@@ -716,8 +721,47 @@ export default function TradeListPage() {
   const [messageType, setMessageType] =
     useState<MessageType>("");
 
+  const availableTags = useMemo<TradeTag[]>(() => {
+    const tagMap = new Map<string, TradeTag>();
+
+    trades.forEach((trade) => {
+      trade.tags?.forEach((tag) => {
+        const normalizedValue = normalizeTagValue(tag);
+
+        if (!normalizedValue || tagMap.has(normalizedValue)) {
+          return;
+        }
+
+        tagMap.set(normalizedValue, {
+          ...tag,
+          value: normalizedValue,
+        });
+      });
+    });
+
+    return Array.from(tagMap.values()).sort((first, second) =>
+      first.title.localeCompare(second.title),
+    );
+  }, [trades]);
+
+  const filteredTrades = useMemo(() => {
+    if (selectedTagValues.length === 0) {
+      return trades;
+    }
+
+    return trades.filter((trade) => {
+      const tradeTagValues = new Set(
+        (trade.tags ?? []).map(normalizeTagValue),
+      );
+
+      return selectedTagValues.every((tagValue) =>
+        tradeTagValues.has(tagValue),
+      );
+    });
+  }, [selectedTagValues, trades]);
+
   const totals = useMemo<TradeTotals>(() => {
-    return trades.reduce(
+    return filteredTrades.reduce(
       (summary, trade) => ({
         totalTrades: summary.totalTrades + 1,
         netPnl: summary.netPnl + getNumber(trade.netPnl),
@@ -732,7 +776,7 @@ export default function TradeListPage() {
         riskTaken: 0,
       },
     );
-  }, [trades]);
+  }, [filteredTrades]);
 
   const showMessage = useCallback(
     (text: string, type: MessageType) => {
@@ -742,90 +786,107 @@ export default function TradeListPage() {
     [],
   );
 
-  const loadTrades = useCallback(async () => {
-    if (startDate && endDate && startDate > endDate) {
-      setTrades([]);
-      setLoading(false);
-      showMessage(
-        "Start date cannot be later than end date",
-        "error",
-      );
-      return;
-    }
-
+  useEffect(() => {
     const controller = new AbortController();
 
-    try {
-      setLoading(true);
-      setMessage("");
-      setMessageType("");
-
-      const params = new URLSearchParams();
-
-      if (startDate) {
-        params.set("startDate", startDate);
-      }
-
-      if (endDate) {
-        params.set("endDate", endDate);
-      }
-
-      const query = params.toString();
-
-      const response = await fetch(
-        `/api/savetrade${query ? `?${query}` : ""}`,
-        {
-          method: "GET",
-          cache: "no-store",
-          signal: controller.signal,
-        },
-      );
-
-      const data = await readJsonSafely<TradesResponse>(
-        response,
-      );
-
-      if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.error || "Failed to load trades",
+    async function loadTrades() {
+      if (startDate && endDate && startDate > endDate) {
+        setTrades([]);
+        setSelectedTagValues([]);
+        setLoading(false);
+        showMessage(
+          "Start date cannot be later than end date",
+          "error",
         );
-      }
-
-      setTrades(
-        Array.isArray(data.trades) ? data.trades : [],
-      );
-    } catch (error) {
-      if (
-        error instanceof DOMException &&
-        error.name === "AbortError"
-      ) {
         return;
       }
 
-      setTrades([]);
+      try {
+        setLoading(true);
+        setMessage("");
+        setMessageType("");
 
-      showMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to load trades",
-        "error",
-      );
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
+        const params = new URLSearchParams();
+
+        if (startDate) {
+          params.set("startDate", startDate);
+        }
+
+        if (endDate) {
+          params.set("endDate", endDate);
+        }
+
+        const query = params.toString();
+
+        const response = await fetch(
+          `/api/savetrade${query ? `?${query}` : ""}`,
+          {
+            method: "GET",
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+
+        const data =
+          await readJsonSafely<TradesResponse>(response);
+
+        if (!response.ok || !data?.ok) {
+          throw new Error(
+            data?.error || "Failed to load trades",
+          );
+        }
+
+        setTrades(
+          Array.isArray(data.trades) ? data.trades : [],
+        );
+
+        setSelectedTagValues([]);
+      } catch (error) {
+        if (
+          error instanceof DOMException &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setTrades([]);
+
+        showMessage(
+          error instanceof Error
+            ? error.message
+            : "Failed to load trades",
+          "error",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
+
+    void loadTrades();
 
     return () => controller.abort();
   }, [endDate, showMessage, startDate]);
 
-  useEffect(() => {
-    void loadTrades();
-  }, [loadTrades]);
-
   function clearFilters() {
     setStartDate("");
     setEndDate("");
+    setSelectedTagValues([]);
+  }
+
+  function toggleTagFilter(tagValue: string) {
+    setSelectedTagValues((currentValues) =>
+      currentValues.includes(tagValue)
+        ? currentValues.filter(
+            (currentValue) => currentValue !== tagValue,
+          )
+        : [...currentValues, tagValue],
+    );
+  }
+
+  function clearTagFilters() {
+    setSelectedTagValues([]);
   }
 
   function openEditModal(trade: TradeListItem) {
@@ -883,10 +944,14 @@ export default function TradeListPage() {
     const charges = Math.abs(Number(editForm.charges));
     const notes = editForm.notes.trim();
 
-    const tags = editForm.tags
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
+    const tags = Array.from(
+      new Set(
+        editForm.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      ),
+    );
 
     if (!date || !trade) {
       showMessage(
@@ -907,14 +972,6 @@ export default function TradeListPage() {
     if (!Number.isFinite(riskTaken)) {
       showMessage(
         "Risk taken must be a valid number",
-        "error",
-      );
-      return;
-    }
-
-    if (riskTaken < 0) {
-      showMessage(
-        "Risk taken cannot be negative",
         "error",
       );
       return;
@@ -1057,6 +1114,8 @@ export default function TradeListPage() {
   const actionsDisabled =
     savingEdit || deletingId !== null;
 
+  const hasSelectedTags = selectedTagValues.length > 0;
+
   return (
     <main className="min-h-screen bg-slate-100 dark:bg-slate-950">
       <div className="mx-auto max-w-7xl p-4 md:p-8">
@@ -1130,18 +1189,79 @@ export default function TradeListPage() {
           </div>
         </section>
 
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Filter by tags
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Tags are generated from trades in the selected date range.
+              </p>
+            </div>
+
+            {hasSelectedTags ? (
+              <button
+                type="button"
+                onClick={clearTagFilters}
+                className="self-start rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:self-auto"
+              >
+                Clear Tags
+              </button>
+            ) : null}
+          </div>
+
+          {availableTags.length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              No tags found in the selected date range.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {availableTags.map((tag) => {
+                const isSelected =
+                  selectedTagValues.includes(tag.value);
+
+                return (
+                  <button
+                    key={tag.value}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() =>
+                      toggleTagFilter(tag.value)
+                    }
+                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                      isSelected
+                        ? "border-sky-600 bg-sky-600 text-white dark:border-sky-400 dark:bg-sky-400 dark:text-slate-950"
+                        : "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-400 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/60"
+                    }`}
+                  >
+                    {tag.title}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {hasSelectedTags ? (
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              Showing trades containing all selected tags.
+            </p>
+          ) : null}
+        </section>
+
         <section className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
             label="Total Trades"
             value={totals.totalTrades}
-            description="Active date range"
+            description="After active filters"
           />
 
           <SummaryCard
             label="Total Net P&L"
             value={formatCurrency(totals.netPnl)}
             description="After charges"
-            className={`${pnlCardClass(totals.netPnl)}`}
+            className={pnlCardClass(totals.netPnl)}
           />
 
           <SummaryCard
@@ -1161,7 +1281,7 @@ export default function TradeListPage() {
         {message ? (
           <div
             role="status"
-            className={`mb-6 rounded-xl border px-4 py-3 text-sm ${readMessageClass(
+            className={`mb-6 rounded-xl border px-4 py-3 text-sm ${messageClass(
               messageType,
             )}`}
           >
@@ -1182,6 +1302,16 @@ export default function TradeListPage() {
 
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 Try changing the date range or save a new trade.
+              </p>
+            </div>
+          ) : filteredTrades.length === 0 ? (
+            <div className="p-8 text-center">
+              <p className="font-medium text-slate-700 dark:text-slate-200">
+                No trades match the selected tags
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Try selecting different tags or clear the tag filters.
               </p>
             </div>
           ) : (
@@ -1221,11 +1351,11 @@ export default function TradeListPage() {
                   </thead>
 
                   <tbody>
-                    {trades.map((trade) => (
-                      <TradeTableRow
+                    {filteredTrades.map((trade) => (
+                      <TradeRow
                         key={trade._id}
                         trade={trade}
-                        actionsDisabled={actionsDisabled}
+                        disabled={actionsDisabled}
                         isDeleting={
                           deletingId === trade._id
                         }
@@ -1245,11 +1375,11 @@ export default function TradeListPage() {
               </div>
 
               <div className="divide-y divide-slate-200 md:hidden dark:divide-slate-800">
-                {trades.map((trade) => (
-                  <TradeMobileCard
+                {filteredTrades.map((trade) => (
+                  <TradeCard
                     key={trade._id}
                     trade={trade}
-                    actionsDisabled={actionsDisabled}
+                    disabled={actionsDisabled}
                     isDeleting={
                       deletingId === trade._id
                     }

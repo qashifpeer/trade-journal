@@ -9,7 +9,7 @@ import {
 } from "react";
 
 type TagItem = {
-  _id?: string;
+  _id: string;
   title: string;
   value: string;
 };
@@ -19,6 +19,12 @@ type MessageType = "success" | "warning" | "error" | "";
 type SaveTradeResponse = {
   ok?: boolean;
   id?: string;
+  error?: string;
+};
+
+type TagsResponse = {
+  ok?: boolean;
+  tags?: TagItem[];
   error?: string;
 };
 
@@ -41,10 +47,6 @@ function getTodayLocalDate() {
   return `${year}-${month}-${day}`;
 }
 
-function normalizeTag(value: string) {
-  return value.trim().toLowerCase();
-}
-
 function parseNumber(value: string) {
   if (!value.trim()) {
     return null;
@@ -53,6 +55,14 @@ function parseNumber(value: string) {
   const parsedValue = Number(value);
 
   return Number.isFinite(parsedValue) ? parsedValue : null;
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(Number(value) || 0);
 }
 
 function pnlColor(value: number) {
@@ -111,15 +121,6 @@ async function readJsonSafely<T>(
   }
 }
 
-function createCustomTag(value: string): TagItem {
-  const title = value.trim();
-
-  return {
-    title,
-    value: normalizeTag(title),
-  };
-}
-
 export default function SaveTradePage() {
   const [date, setDate] = useState(getTodayLocalDate());
   const [trade, setTrade] = useState("");
@@ -128,12 +129,13 @@ export default function SaveTradePage() {
   const [charges, setCharges] = useState("");
   const [notes, setNotes] = useState("");
 
-  const [tags, setTags] = useState<TagItem[]>([]);
-  const [tagInput, setTagInput] = useState("");
-  const [tagSuggestions, setTagSuggestions] = useState<TagItem[]>(
+  const [availableTags, setAvailableTags] = useState<TagItem[]>(
     [],
   );
-  const [loadingTags, setLoadingTags] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<TagItem[]>(
+    [],
+  );
+  const [loadingTags, setLoadingTags] = useState(true);
 
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] =
@@ -141,13 +143,12 @@ export default function SaveTradePage() {
 
   const [saving, setSaving] = useState(false);
 
-  const trimmedTagInput = tagInput.trim();
-  const normalizedTagInput = normalizeTag(trimmedTagInput);
-
   const outcomeNumber = parseNumber(outcome) ?? 0;
+
   const riskTakenNumber = Math.abs(
     parseNumber(riskTaken) ?? 0,
   );
+
   const chargesNumber = Math.abs(
     parseNumber(charges) ?? 0,
   );
@@ -157,45 +158,20 @@ export default function SaveTradePage() {
     [outcomeNumber, chargesNumber],
   );
 
-  const hasExactMatch = tagSuggestions.some(
-    (tag) => tag.value === normalizedTagInput,
+  const selectedTagValues = useMemo(
+    () => new Set(selectedTags.map((tag) => tag.value)),
+    [selectedTags],
   );
-
-  const isAlreadySelected = tags.some(
-    (tag) => tag.value === normalizedTagInput,
-  );
-
-  const showDropdown = trimmedTagInput.length > 0;
-
-  const showCreateOption =
-    !loadingTags &&
-    trimmedTagInput.length > 0 &&
-    !hasExactMatch &&
-    !isAlreadySelected;
-
-  const showEmptyNote =
-    !loadingTags &&
-    trimmedTagInput.length > 0 &&
-    tagSuggestions.length === 0 &&
-    !hasExactMatch;
 
   useEffect(() => {
     const controller = new AbortController();
 
-    async function fetchTags() {
-      if (!trimmedTagInput) {
-        setTagSuggestions([]);
-        setLoadingTags(false);
-        return;
-      }
-
+    async function loadTags() {
       try {
         setLoadingTags(true);
 
         const response = await fetch(
-          `/api/savetrade/tags?q=${encodeURIComponent(
-            trimmedTagInput,
-          )}`,
+          "/api/savetrade/tags",
           {
             method: "GET",
             cache: "no-store",
@@ -204,17 +180,29 @@ export default function SaveTradePage() {
         );
 
         const data =
-          await readJsonSafely<{ tags?: TagItem[] }>(
-            response,
-          );
+          await readJsonSafely<TagsResponse>(response);
 
-        if (!response.ok) {
-          setTagSuggestions([]);
-          return;
+        if (!response.ok || !data?.ok) {
+          throw new Error(
+            data?.error || "Failed to load tags",
+          );
         }
 
-        setTagSuggestions(
-          Array.isArray(data?.tags) ? data.tags : [],
+        const tags = Array.isArray(data.tags)
+          ? data.tags
+          : [];
+
+        setAvailableTags(
+          tags
+            .filter(
+              (tag) =>
+                tag &&
+                typeof tag.title === "string" &&
+                typeof tag.value === "string",
+            )
+            .sort((first, second) =>
+              first.title.localeCompare(second.title),
+            ),
         );
       } catch (error) {
         if (
@@ -224,9 +212,14 @@ export default function SaveTradePage() {
           return;
         }
 
-        if (!controller.signal.aborted) {
-          setTagSuggestions([]);
-        }
+        setAvailableTags([]);
+
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Failed to load tags",
+        );
+        setMessageType("warning");
       } finally {
         if (!controller.signal.aborted) {
           setLoadingTags(false);
@@ -234,63 +227,29 @@ export default function SaveTradePage() {
       }
     }
 
-    const timer = window.setTimeout(fetchTags, 250);
+    void loadTags();
 
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [trimmedTagInput]);
+    return () => controller.abort();
+  }, []);
 
-  function addTag(tag: TagItem) {
-    const title = tag.title.trim();
-    const value = normalizeTag(tag.value || title);
+  function toggleTag(tag: TagItem) {
+    setSelectedTags((currentTags) => {
+      const alreadySelected = currentTags.some(
+        (currentTag) => currentTag.value === tag.value,
+      );
 
-    if (!title || !value) {
-      return;
-    }
+      if (alreadySelected) {
+        return currentTags.filter(
+          (currentTag) => currentTag.value !== tag.value,
+        );
+      }
 
-    const alreadySelected = tags.some(
-      (selectedTag) => selectedTag.value === value,
-    );
-
-    if (alreadySelected) {
-      setTagInput("");
-      setTagSuggestions([]);
-      return;
-    }
-
-    setTags((currentTags) => [
-      ...currentTags,
-      {
-        ...tag,
-        title,
-        value,
-      },
-    ]);
-
-    setTagInput("");
-    setTagSuggestions([]);
+      return [...currentTags, tag];
+    });
   }
 
-  function removeTag(value: string) {
-    setTags((currentTags) =>
-      currentTags.filter((tag) => tag.value !== value),
-    );
-  }
-
-  function handleTagEnter() {
-    if (!trimmedTagInput) {
-      return;
-    }
-
-    const existingTag = tagSuggestions.find(
-      (tag) => tag.value === normalizedTagInput,
-    );
-
-    addTag(
-      existingTag ?? createCustomTag(trimmedTagInput),
-    );
+  function clearSelectedTags() {
+    setSelectedTags([]);
   }
 
   function handleChargesChange(
@@ -334,9 +293,7 @@ export default function SaveTradePage() {
     setRiskTaken("");
     setCharges("");
     setNotes("");
-    setTags([]);
-    setTagInput("");
-    setTagSuggestions([]);
+    setSelectedTags([]);
   }
 
   async function handleSubmit(
@@ -400,7 +357,7 @@ export default function SaveTradePage() {
           charges: normalizedCharges,
           netPnl: parsedOutcome - normalizedCharges,
           notes: notes.trim(),
-          tags: tags.map((tag) => tag.title),
+          tags: selectedTags.map((tag) => tag.title),
         }),
       });
 
@@ -589,110 +546,76 @@ export default function SaveTradePage() {
               </div>
 
               <div>
-                <label
-                  htmlFor="tag-input"
-                  className={LABEL_BASE}
-                >
-                  Tags
-                </label>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <label className={LABEL_BASE}>
+                    Tags
+                  </label>
 
-                <div className="relative">
-                  <div className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-900">
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      {tags.map((tag) => (
-                        <span
-                          key={tag._id ?? tag.value}
-                          className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
-                        >
-                          {tag.title}
-
-                          <button
-                            type="button"
-                            aria-label={`Remove ${tag.title} tag`}
-                            onClick={() =>
-                              removeTag(tag.value)
-                            }
-                            className="ml-1.5 text-sky-700 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-
-                    <input
-                      id="tag-input"
-                      type="text"
-                      value={tagInput}
-                      onChange={(event) =>
-                        setTagInput(event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          handleTagEnter();
-                        }
-                      }}
-                      className="w-full bg-transparent text-black outline-none uppercase placeholder:text-slate-400 dark:text-white dark:placeholder:text-slate-500"
-                      placeholder="Type a tag and press Enter"
-                    />
-                  </div>
-
-                  {showDropdown ? (
-                    <div className="absolute z-10 mt-2 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                      {loadingTags ? (
-                        <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
-                          Searching...
-                        </div>
-                      ) : (
-                        <>
-                          {tagSuggestions.map(
-                            (suggestion) => (
-                              <button
-                                key={
-                                  suggestion._id ??
-                                  suggestion.value
-                                }
-                                type="button"
-                                onClick={() =>
-                                  addTag(suggestion)
-                                }
-                                className="block w-full px-3 py-2 text-left text-sm uppercase text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                              >
-                                {suggestion.title}
-                              </button>
-                            ),
-                          )}
-
-                          {showCreateOption ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                addTag(
-                                  createCustomTag(
-                                    trimmedTagInput,
-                                  ),
-                                )
-                              }
-                              className="block w-full border-t border-slate-100 px-3 py-2 text-left text-sm font-medium uppercase text-sky-700 hover:bg-sky-50 dark:border-slate-700 dark:text-sky-300 dark:hover:bg-slate-800"
-                            >
-                              Use &quot;
-                              {trimmedTagInput}
-                              &quot;
-                            </button>
-                          ) : null}
-
-                          {showEmptyNote ? (
-                            <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                              No matching tag found. Use
-                              your typed tag above.
-                            </div>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
+                  {selectedTags.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={clearSelectedTags}
+                      className="text-xs font-medium text-sky-600 hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-200"
+                    >
+                      Clear selected
+                    </button>
                   ) : null}
                 </div>
+
+                <div
+                  className="rounded-xl border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
+                  aria-label="Trade tags"
+                >
+                  {loadingTags ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Loading tags...
+                    </p>
+                  ) : availableTags.length === 0 ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      No tags available.
+                    </p>
+                  ) : (
+                    <div className="flex max-h-48 flex-wrap gap-2 overflow-y-auto">
+                      {availableTags.map((tag) => {
+                        const isSelected =
+                          selectedTagValues.has(tag.value);
+
+                        return (
+                          <button
+                            key={tag._id}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() => toggleTag(tag)}
+                            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                              isSelected
+                                ? "border-sky-600 bg-sky-600 text-white dark:border-sky-400 dark:bg-sky-400 dark:text-slate-950"
+                                : "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-400 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/60"
+                            }`}
+                          >
+                            {tag.title}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <p className={HELP_TEXT_BASE}>
+                  Select one or more tags for this trade.
+                </p>
+
+                {selectedTags.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selectedTags.map((tag) => (
+                      <span
+                        key={tag._id}
+                        className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                      >
+                        {tag.title}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div>
@@ -767,7 +690,7 @@ export default function SaveTradePage() {
                       outcomeNumber,
                     )}`}
                   >
-                    {outcomeNumber}
+                    {formatCurrency(outcomeNumber)}
                   </p>
                 </div>
 
@@ -777,7 +700,7 @@ export default function SaveTradePage() {
                   </p>
 
                   <p className="mt-1 text-xl font-bold text-amber-700 dark:text-amber-300">
-                    {riskTakenNumber}
+                    {formatCurrency(riskTakenNumber)}
                   </p>
                 </div>
 
@@ -795,7 +718,7 @@ export default function SaveTradePage() {
                       netPnl,
                     )}`}
                   >
-                    {netPnl}
+                    {formatCurrency(netPnl)}
                   </p>
                 </div>
 
@@ -805,7 +728,7 @@ export default function SaveTradePage() {
                   </p>
 
                   <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                    {chargesNumber}
+                    {formatCurrency(chargesNumber)}
                   </p>
                 </div>
 
@@ -815,7 +738,7 @@ export default function SaveTradePage() {
                   </p>
 
                   <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                    {tags.length}
+                    {selectedTags.length}
                   </p>
                 </div>
 
@@ -837,9 +760,9 @@ export default function SaveTradePage() {
               </p>
 
               <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                Every submission creates a separate trade
-                record. You can save multiple trades using the
-                same date.
+                Select existing tags before saving. The
+                selected tags will be attached to this trade
+                record.
               </p>
             </section>
           </aside>
