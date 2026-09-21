@@ -1,7 +1,7 @@
 // sanity/schemas/tag.ts
 import {defineField, defineType} from 'sanity'
 
-export const tag= defineType({
+export default defineType({
   name: 'tag',
   title: 'Tag',
   type: 'document',
