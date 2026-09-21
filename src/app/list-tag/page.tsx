@@ -741,7 +741,7 @@ export default function ListTagPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  Update the tag title and value.
+                  Update the tags.
                 </p>
               </div>
 
