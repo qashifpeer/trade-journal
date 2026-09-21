@@ -11,14 +11,14 @@
   "dependencies": {
     "@sanity/client": "^7.22.0",
     "@sanity/image-url": "^2.1.1",
-    "@sanity/vision": "^5.22.0",
+    "@sanity/vision": "^6.15.0",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "next-sanity": "^12.3.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.9.2",
-    "sanity": "^5.22.0",
+    "sanity": "^6.15.0",
     "styled-components": "^6.4.1"
   },
   "devDependencies": {
