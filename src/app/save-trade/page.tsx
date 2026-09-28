@@ -273,10 +273,22 @@ export default function SaveTradePage() {
           },
         );
 
-        const data =
-          await readJsonSafely<TagsResponse>(
-            response,
-          );
+        // DEBUG: Log the response
+        const text = await response.text();
+        // console.log("Status:", response.status);
+        // console.log("Headers:", response.headers.get("content-type"));
+        // console.log("Body:", text);
+
+        // Then parse it
+        if (!text) {
+          return null;
+        }
+        const data = JSON.parse(text) as TagsResponse;
+
+        // const data =
+        //   await readJsonSafely<TagsResponse>(
+        //     response,
+        //   );
 
         if (!response.ok || !data?.ok) {
           throw new Error(
