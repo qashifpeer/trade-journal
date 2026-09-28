@@ -10,9 +10,11 @@ import {
 
 type TagItem = {
   _id: string;
-  title: string;
   value: string;
+  groupName: string;
 };
+
+type GroupedTags = Record<string, TagItem[]>;
 
 type MessageType = "success" | "warning" | "error" | "";
 
@@ -28,6 +30,19 @@ type TagsResponse = {
   error?: string;
 };
 
+const GROUP_LABELS: Record<string, string> = {
+  day: "Day",
+  emotion: "Emotions",
+  emotions: "Emotions",
+  mistake: "Mistakes",
+  mistakes: "Mistakes",
+  marketCondition: "Market Conditions",
+  tradeSetup: "Trade Setups",
+  session: "Sessions",
+  instrument: "Instruments",
+  custom: "Other",
+};
+
 const INPUT_BASE =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-black outline-none transition placeholder:text-slate-400 focus:border-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-slate-500";
 
@@ -41,7 +56,10 @@ function getTodayLocalDate() {
   const now = new Date();
 
   const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(
+    2,
+    "0",
+  );
   const day = String(now.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
@@ -54,7 +72,9 @@ function parseNumber(value: string) {
 
   const parsedValue = Number(value);
 
-  return Number.isFinite(parsedValue) ? parsedValue : null;
+  return Number.isFinite(parsedValue)
+    ? parsedValue
+    : null;
 }
 
 function formatCurrency(value: number) {
@@ -121,20 +141,64 @@ async function readJsonSafely<T>(
   }
 }
 
+function getTagLabel(tag: TagItem) {
+  return tag.value || "Unnamed tag";
+}
+
+function getGroupLabel(groupName: string) {
+  return (
+    GROUP_LABELS[groupName] ||
+    groupName
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[-_]/g, " ")
+      .replace(/\b\w/g, (letter) =>
+        letter.toUpperCase(),
+      )
+  );
+}
+
+function normalizeTag(tag: TagItem): TagItem | null {
+  if (
+    !tag ||
+    typeof tag._id !== "string" ||
+    typeof tag.value !== "string"
+  ) {
+    return null;
+  }
+
+  const value = tag.value.trim();
+
+  if (!value) {
+    return null;
+  }
+
+  return {
+    _id: tag._id,
+    value,
+    groupName:
+      typeof tag.groupName === "string" &&
+      tag.groupName.trim()
+        ? tag.groupName.trim()
+        : "custom",
+  };
+}
+
 export default function SaveTradePage() {
-  const [date, setDate] = useState(getTodayLocalDate());
+  const [date, setDate] = useState(
+    getTodayLocalDate(),
+  );
   const [trade, setTrade] = useState("");
   const [outcome, setOutcome] = useState("");
   const [riskTaken, setRiskTaken] = useState("");
   const [charges, setCharges] = useState("");
   const [notes, setNotes] = useState("");
 
-  const [availableTags, setAvailableTags] = useState<TagItem[]>(
-    [],
-  );
-  const [selectedTags, setSelectedTags] = useState<TagItem[]>(
-    [],
-  );
+  const [availableTags, setAvailableTags] = useState<
+    TagItem[]
+  >([]);
+  const [selectedTags, setSelectedTags] = useState<
+    TagItem[]
+  >([]);
   const [loadingTags, setLoadingTags] = useState(true);
 
   const [message, setMessage] = useState("");
@@ -158,10 +222,40 @@ export default function SaveTradePage() {
     [outcomeNumber, chargesNumber],
   );
 
-  const selectedTagValues = useMemo(
-    () => new Set(selectedTags.map((tag) => tag.value)),
+  const selectedTagIds = useMemo(
+    () =>
+      new Set(
+        selectedTags.map((tag) => tag._id),
+      ),
     [selectedTags],
   );
+
+  const groupedTags = useMemo<GroupedTags>(() => {
+    return availableTags.reduce<GroupedTags>(
+      (groups, tag) => {
+        const groupName =
+          tag.groupName || "custom";
+
+        if (!groups[groupName]) {
+          groups[groupName] = [];
+        }
+
+        groups[groupName].push(tag);
+
+        return groups;
+      },
+      {},
+    );
+  }, [availableTags]);
+
+  const orderedTagGroups = useMemo(() => {
+    return Object.entries(groupedTags).sort(
+      ([firstGroup], [secondGroup]) =>
+        getGroupLabel(firstGroup).localeCompare(
+          getGroupLabel(secondGroup),
+        ),
+    );
+  }, [groupedTags]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -180,7 +274,9 @@ export default function SaveTradePage() {
         );
 
         const data =
-          await readJsonSafely<TagsResponse>(response);
+          await readJsonSafely<TagsResponse>(
+            response,
+          );
 
         if (!response.ok || !data?.ok) {
           throw new Error(
@@ -188,22 +284,35 @@ export default function SaveTradePage() {
           );
         }
 
-        const tags = Array.isArray(data.tags)
-          ? data.tags
-          : [];
+        const normalizedTags = (
+          Array.isArray(data.tags)
+            ? data.tags
+            : []
+        )
+          .map(normalizeTag)
+          .filter(
+            (tag): tag is TagItem => tag !== null,
+          )
+          .sort((first, second) => {
+            const groupComparison =
+              getGroupLabel(
+                first.groupName,
+              ).localeCompare(
+                getGroupLabel(
+                  second.groupName,
+                ),
+              );
 
-        setAvailableTags(
-          tags
-            .filter(
-              (tag) =>
-                tag &&
-                typeof tag.title === "string" &&
-                typeof tag.value === "string",
-            )
-            .sort((first, second) =>
-              first.title.localeCompare(second.title),
-            ),
-        );
+            if (groupComparison !== 0) {
+              return groupComparison;
+            }
+
+            return first.value.localeCompare(
+              second.value,
+            );
+          });
+
+        setAvailableTags(normalizedTags);
       } catch (error) {
         if (
           error instanceof DOMException &&
@@ -235,12 +344,14 @@ export default function SaveTradePage() {
   function toggleTag(tag: TagItem) {
     setSelectedTags((currentTags) => {
       const alreadySelected = currentTags.some(
-        (currentTag) => currentTag.value === tag.value,
+        (currentTag) =>
+          currentTag._id === tag._id,
       );
 
       if (alreadySelected) {
         return currentTags.filter(
-          (currentTag) => currentTag.value !== tag.value,
+          (currentTag) =>
+            currentTag._id !== tag._id,
         );
       }
 
@@ -282,7 +393,9 @@ export default function SaveTradePage() {
     const numericValue = Number(value);
 
     if (Number.isFinite(numericValue)) {
-      setRiskTaken(String(Math.abs(numericValue)));
+      setRiskTaken(
+        String(Math.abs(numericValue)),
+      );
     }
   }
 
@@ -308,7 +421,9 @@ export default function SaveTradePage() {
     }
 
     if (!trade.trim()) {
-      setMessage("Trade or contract name is required");
+      setMessage(
+        "Trade or contract name is required",
+      );
       setMessageType("error");
       return;
     }
@@ -316,7 +431,9 @@ export default function SaveTradePage() {
     const parsedOutcome = parseNumber(outcome);
 
     if (parsedOutcome === null) {
-      setMessage("Outcome must be a valid number");
+      setMessage(
+        "Outcome must be a valid number",
+      );
       setMessageType("error");
       return;
     }
@@ -330,14 +447,37 @@ export default function SaveTradePage() {
     }
 
     if (parsedRiskTaken < 0) {
-      setMessage("Risk taken cannot be negative");
+      setMessage(
+        "Risk taken cannot be negative",
+      );
       setMessageType("error");
       return;
     }
 
     const parsedCharges = parseNumber(charges) ?? 0;
-    const normalizedCharges = Math.abs(parsedCharges);
-    const normalizedRiskTaken = Math.abs(parsedRiskTaken);
+
+    if (parsedCharges < 0) {
+      setMessage(
+        "Charges cannot be negative",
+      );
+      setMessageType("error");
+      return;
+    }
+
+    const normalizedCharges = Math.abs(
+      parsedCharges,
+    );
+    const normalizedRiskTaken = Math.abs(
+      parsedRiskTaken,
+    );
+
+    const tagIds = Array.from(
+      new Set(
+        selectedTags
+          .map((tag) => tag._id.trim())
+          .filter(Boolean),
+      ),
+    );
 
     try {
       setSaving(true);
@@ -355,9 +495,13 @@ export default function SaveTradePage() {
           outcome: parsedOutcome,
           riskTaken: normalizedRiskTaken,
           charges: normalizedCharges,
-          netPnl: parsedOutcome - normalizedCharges,
+          netPnl:
+            parsedOutcome - normalizedCharges,
           notes: notes.trim(),
-          tags: selectedTags.map((tag) => tag.title),
+
+          // Send only existing tag document IDs.
+          // The API converts them into references.
+          tags: tagIds,
         }),
       });
 
@@ -508,14 +652,17 @@ export default function SaveTradePage() {
                     min="0"
                     step="any"
                     value={riskTaken}
-                    onChange={handleRiskTakenChange}
+                    onChange={
+                      handleRiskTakenChange
+                    }
                     className={INPUT_BASE}
                     placeholder="1000"
                     required
                   />
 
                   <p className={HELP_TEXT_BASE}>
-                    Maximum amount you were willing to risk.
+                    Maximum amount you were willing to
+                    risk.
                   </p>
                 </div>
 
@@ -575,27 +722,51 @@ export default function SaveTradePage() {
                       No tags available.
                     </p>
                   ) : (
-                    <div className="flex max-h-48 flex-wrap gap-2 overflow-y-auto">
-                      {availableTags.map((tag) => {
-                        const isSelected =
-                          selectedTagValues.has(tag.value);
-
-                        return (
-                          <button
-                            key={tag._id}
-                            type="button"
-                            aria-pressed={isSelected}
-                            onClick={() => toggleTag(tag)}
-                            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
-                              isSelected
-                                ? "border-sky-600 bg-sky-600 text-white dark:border-sky-400 dark:bg-sky-400 dark:text-slate-950"
-                                : "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-400 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/60"
-                            }`}
+                    <div className="max-h-72 space-y-5 overflow-y-auto pr-1">
+                      {orderedTagGroups.map(
+                        ([groupName, tags]) => (
+                          <section
+                            key={groupName}
                           >
-                            {tag.title}
-                          </button>
-                        );
-                      })}
+                            <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                              {getGroupLabel(
+                                groupName,
+                              )}
+                            </h3>
+
+                            <div className="flex flex-wrap gap-2">
+                              {tags.map((tag) => {
+                                const isSelected =
+                                  selectedTagIds.has(
+                                    tag._id,
+                                  );
+
+                                return (
+                                  <button
+                                    key={tag._id}
+                                    type="button"
+                                    aria-pressed={
+                                      isSelected
+                                    }
+                                    onClick={() =>
+                                      toggleTag(tag)
+                                    }
+                                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                                      isSelected
+                                        ? "border-sky-600 bg-sky-600 text-white dark:border-sky-400 dark:bg-sky-400 dark:text-slate-950"
+                                        : "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-400 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/60"
+                                    }`}
+                                  >
+                                    {getTagLabel(
+                                      tag,
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </section>
+                        ),
+                      )}
                     </div>
                   )}
                 </div>
@@ -611,7 +782,7 @@ export default function SaveTradePage() {
                         key={tag._id}
                         className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
                       >
-                        {tag.title}
+                        {getTagLabel(tag)}
                       </span>
                     ))}
                   </div>

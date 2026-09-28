@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getSanityWriteClient } from "@/src/lib/sanity.client";
-import { getOrCreateTag } from "@/src/lib/tag";
 
 type SaveTradeRequestBody = {
   date?: unknown;
@@ -23,7 +22,7 @@ type SavedTradeCreateDocument = {
   date: string;
   trade: string;
   outcome: number;
-  riskTaken?: number;
+  riskTaken: number;
   charges: number;
   netPnl: number;
   notes: string;
@@ -37,21 +36,30 @@ type SavedTradeListItem = {
   trade: string;
   outcome: number;
   netPnl: number;
-  riskTaken?: number;
+  riskTaken: number;
   charges: number;
   notes: string;
   tags: Array<{
     _id: string;
-    title: string;
     value: string;
+    groupName: string;
   }>;
 };
 
+type ExistingTag = {
+  _id: string;
+};
+
 function getString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  return typeof value === "string"
+    ? value.trim()
+    : "";
 }
 
-function getNumber(value: unknown, fallback = 0): number {
+function getNumber(
+  value: unknown,
+  fallback = 0,
+): number {
   if (
     typeof value === "number" &&
     Number.isFinite(value)
@@ -73,7 +81,11 @@ function getNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function getTags(value: unknown): string[] {
+/**
+ * The client sends existing Sanity tag IDs.
+ * This function does not create or update tags.
+ */
+function getTagIds(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -82,10 +94,10 @@ function getTags(value: unknown): string[] {
     new Set(
       value
         .filter(
-          (tag): tag is string =>
-            typeof tag === "string",
+          (tagId): tagId is string =>
+            typeof tagId === "string",
         )
-        .map((tag) => tag.trim())
+        .map((tagId) => tagId.trim())
         .filter(Boolean),
     ),
   );
@@ -96,7 +108,10 @@ export function isValidDate(value: string): boolean {
     return false;
   }
 
-  const [year, month, day] = value.split("-").map(Number);
+  const [year, month, day] = value
+    .split("-")
+    .map(Number);
+
   const date = new Date(
     Date.UTC(year, month - 1, day),
   );
@@ -120,7 +135,11 @@ function isValidDateRange(
     return false;
   }
 
-  if (startDate && endDate && startDate > endDate) {
+  if (
+    startDate &&
+    endDate &&
+    startDate > endDate
+  ) {
     return false;
   }
 
@@ -139,7 +158,11 @@ function getDateRangeError(
     return "End date must use the YYYY-MM-DD format";
   }
 
-  if (startDate && endDate && startDate > endDate) {
+  if (
+    startDate &&
+    endDate &&
+    startDate > endDate
+  ) {
     return "Start date cannot be later than end date";
   }
 
@@ -159,7 +182,8 @@ async function parseJsonBody(
     }
 > {
   try {
-    const body = (await request.json()) as SaveTradeRequestBody;
+    const body =
+      (await request.json()) as SaveTradeRequestBody;
 
     return {
       ok: true,
@@ -179,6 +203,51 @@ async function parseJsonBody(
   }
 }
 
+/**
+ * Verifies that every submitted ID is an existing tag.
+ * This function only reads tag documents.
+ * It never creates or updates a tag.
+ */
+async function getExistingTagIds(
+  tagIds: string[],
+): Promise<string[]> {
+  if (tagIds.length === 0) {
+    return [];
+  }
+
+  const client = getSanityWriteClient();
+
+  const existingTags = await client.fetch<
+    ExistingTag[]
+  >(
+    `
+      *[
+        _type == "tag" &&
+        _id in $tagIds
+      ]{
+        _id
+      }
+    `,
+    { tagIds },
+  );
+
+  const existingIds = new Set(
+    existingTags.map((tag) => tag._id),
+  );
+
+  const missingIds = tagIds.filter(
+    (tagId) => !existingIds.has(tagId),
+  );
+
+  if (missingIds.length > 0) {
+    throw new Error(
+      "One or more selected tags do not exist",
+    );
+  }
+
+  return existingTags.map((tag) => tag._id);
+}
+
 export async function POST(request: Request) {
   try {
     const parsedBody = await parseJsonBody(request);
@@ -192,11 +261,18 @@ export async function POST(request: Request) {
     const date = getString(body.date);
     const trade = getString(body.trade);
     const notes = getString(body.notes);
-    const tagTitles = getTags(body.tags);
+
+    // These are existing tag document IDs.
+    const tagIds = getTagIds(body.tags);
 
     const outcome = getNumber(body.outcome);
-    const riskTaken = Math.abs(getNumber(body.riskTaken),);
-    const charges = Math.abs(getNumber(body.charges));
+    const riskTaken = Math.abs(
+      getNumber(body.riskTaken),
+    );
+    const charges = Math.abs(
+      getNumber(body.charges),
+    );
+
     const netPnl = outcome - charges;
 
     if (!date) {
@@ -230,25 +306,56 @@ export async function POST(request: Request) {
     }
 
     if (
-  body.riskTaken !== undefined &&
-  riskTaken < 0
-) {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "Risk taken cannot be negative",
-    },
-    { status: 400 },
-  );
-}
+      body.outcome === undefined ||
+      !Number.isFinite(outcome)
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Outcome must be a valid number",
+        },
+        { status: 400 },
+      );
+    }
 
-    const client = getSanityWriteClient();
+    if (
+      body.riskTaken === undefined ||
+      !Number.isFinite(riskTaken) ||
+      riskTaken < 0
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Risk taken must be a valid non-negative number",
+        },
+        { status: 400 },
+      );
+    }
 
-    const tagDocuments = await Promise.all(
-      tagTitles.map((tagTitle) =>
-        getOrCreateTag(tagTitle),
-      ),
-    );
+    if (
+      body.charges !== undefined &&
+      (!Number.isFinite(charges) || charges < 0)
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Charges must be a valid non-negative number",
+        },
+        { status: 400 },
+      );
+    }
+
+    const existingTagIds =
+      await getExistingTagIds(tagIds);
+
+    const tagReferences: SavedTradeTagReference[] =
+      existingTagIds.map((tagId) => ({
+        _type: "reference",
+        _ref: tagId,
+        _key: crypto.randomUUID(),
+      }));
 
     const document: SavedTradeCreateDocument = {
       _type: "savedTrade",
@@ -259,14 +366,14 @@ export async function POST(request: Request) {
       charges,
       netPnl,
       notes,
-      tags: tagDocuments.map((tag) => ({
-        _type: "reference",
-        _ref: tag._id,
-        _key: crypto.randomUUID(),
-      })),
+      tags: tagReferences,
       createdAt: new Date().toISOString(),
     };
 
+    const client = getSanityWriteClient();
+
+    // This is the only create operation.
+    // It creates a savedTrade, not a tag.
     const result = await client.create(document);
 
     return NextResponse.json(
@@ -278,7 +385,27 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
-    console.error("Save trade API error:", error);
+    console.error(
+      "Save trade API error:",
+      error,
+    );
+
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Failed to save trade";
+
+    if (
+      errorMessage.includes("selected tags")
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: errorMessage,
+        },
+        { status: 400 },
+      );
+    }
 
     return NextResponse.json(
       {
@@ -341,25 +468,29 @@ export async function GET(request: Request) {
         notes,
         tags[]->{
           _id,
-          title,
-          value
+          value,
+          groupName
         }
       }
     `;
 
     const client = getSanityWriteClient();
 
-    const trades = await client.fetch<SavedTradeListItem[]>(
-      query,
-      queryParams,
-    );
+    const trades =
+      await client.fetch<SavedTradeListItem[]>(
+        query,
+        queryParams,
+      );
 
     return NextResponse.json({
       ok: true,
       trades,
     });
   } catch (error) {
-    console.error("Get trades API error:", error);
+    console.error(
+      "Get trades API error:",
+      error,
+    );
 
     return NextResponse.json(
       {
