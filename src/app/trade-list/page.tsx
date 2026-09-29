@@ -12,8 +12,8 @@ import {
 
 type TradeTag = {
   _id: string;
-  title: string;
   value: string;
+  groupName: string;
 };
 
 type TradeListItem = {
@@ -56,7 +56,21 @@ type EditForm = {
   riskTaken: string;
   charges: string;
   notes: string;
-  tags: string;
+  tagIds: string[];
+};
+
+type GroupedTags = Record<string, TradeTag[]>;
+
+const GROUP_LABELS: Record<string, string> = {
+  day: "Days",
+  emotion: "Emotions",
+  outcome: "Outcome",
+  mistake: "Mistakes",
+  marketCondition: "Market Conditions",
+  tradeSetup: "Trade Setups",
+  session: "Sessions",
+  instrument: "Instruments",
+  custom: "Other",
 };
 
 const INPUT_BASE =
@@ -65,8 +79,7 @@ const INPUT_BASE =
 const ICON_BUTTON_BASE =
   "inline-flex h-9 w-9 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-50";
 
-const CARD_BASE =
-  "rounded-2xl border p-5 shadow-sm";
+const CARD_BASE = "rounded-2xl border p-5 shadow-sm";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -80,6 +93,55 @@ function getNumber(value: unknown) {
   const numberValue = Number(value);
 
   return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function getTagLabel(tag: TradeTag) {
+  return tag.value?.trim() || "Unnamed tag";
+}
+
+function getGroupLabel(groupName: string) {
+  return (
+    GROUP_LABELS[groupName] ||
+    groupName
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[-_]/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+  );
+}
+
+function normalizeTag(tag: TradeTag): TradeTag | null {
+  if (!tag || typeof tag._id !== "string" || typeof tag.value !== "string") {
+    return null;
+  }
+
+  return {
+    _id: tag._id,
+    value: tag.value.trim(),
+    groupName:
+      typeof tag.groupName === "string" && tag.groupName.trim()
+        ? tag.groupName.trim()
+        : "custom",
+  };
+}
+
+function normalizeTrade(trade: TradeListItem): TradeListItem {
+  const normalizedTags = Array.isArray(trade.tags)
+    ? trade.tags
+        .map(normalizeTag)
+        .filter((tag): tag is TradeTag => tag !== null)
+    : [];
+
+  return {
+    ...trade,
+    date: trade.date ?? "",
+    trade: trade.trade ?? "",
+    outcome: getNumber(trade.outcome),
+    riskTaken: getNumber(trade.riskTaken),
+    netPnl: getNumber(trade.netPnl),
+    charges: getNumber(trade.charges),
+    notes: trade.notes ?? "",
+    tags: normalizedTags,
+  };
 }
 
 function pnlColor(value: number) {
@@ -122,7 +184,7 @@ function riskCardClass() {
   return "border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30";
 }
 
-function readMessageClass(type: MessageType) {
+function messageClass(type: MessageType) {
   if (type === "success") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300";
   }
@@ -130,9 +192,7 @@ function readMessageClass(type: MessageType) {
   return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300";
 }
 
-async function readJsonSafely<T>(
-  response: Response,
-): Promise<T | null> {
+async function readJsonSafely<T>(response: Response): Promise<T | null> {
   const text = await response.text();
 
   if (!text) {
@@ -163,11 +223,7 @@ function DeleteIcon() {
         strokeLinejoin="round"
         d="M19 6l-1 14H6L5 6"
       />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M10 11v5M14 11v5"
-      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10 11v5M14 11v5" />
     </svg>
   );
 }
@@ -210,24 +266,69 @@ function CloseIcon() {
 
 function TradeTags({ tags }: { tags?: TradeTag[] }) {
   if (!tags?.length) {
-    return (
-      <span className="text-sm text-slate-400">
-        No tags
-      </span>
-    );
+    return <span className="text-sm text-slate-400">No tags</span>;
   }
 
   return (
     <>
       {tags.map((tag) => (
         <span
-          key={`${tag._id}-${tag.value}`}
+          key={tag._id}
+          title={getGroupLabel(tag.groupName)}
           className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
         >
-          {tag.title}
+          {getTagLabel(tag)}
         </span>
       ))}
     </>
+  );
+}
+
+function GroupedTradeTags({ tags }: { tags?: TradeTag[] }) {
+  const groupedTags = useMemo<GroupedTags>(() => {
+    return (tags ?? []).reduce<GroupedTags>((groups, tag) => {
+      const groupName = tag.groupName || "custom";
+
+      if (!groups[groupName]) {
+        groups[groupName] = [];
+      }
+
+      groups[groupName].push(tag);
+
+      return groups;
+    }, {});
+  }, [tags]);
+
+  const groups = Object.entries(groupedTags).sort(([first], [second]) =>
+    getGroupLabel(first).localeCompare(getGroupLabel(second)),
+  );
+
+  if (groups.length === 0) {
+    return <span className="text-sm text-slate-400">No tags</span>;
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-0">
+  {groups.map(([groupName, groupTags]) => (
+    <div key={groupName} className="min-w-0 py-1">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        {getGroupLabel(groupName)}
+      </p>
+
+      {/* Tags in a single row (wrapping horizontally as needed) */}
+      <div className="flex flex-wrap gap-1.5">
+        {groupTags.map((tag) => (
+          <span
+            key={tag._id}
+            className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+          >
+            {getTagLabel(tag)}
+          </span>
+        ))}
+      </div>
+    </div>
+  ))}
+</div>
   );
 }
 
@@ -267,11 +368,7 @@ function TradeActions({
         onClick={onDelete}
         className={`${ICON_BUTTON_BASE} text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40`}
       >
-        {isDeleting ? (
-          <span className="text-xs">...</span>
-        ) : (
-          <DeleteIcon />
-        )}
+        {isDeleting ? <span className="text-xs">...</span> : <DeleteIcon />}
       </button>
     </div>
   );
@@ -280,7 +377,7 @@ function TradeActions({
 type SummaryCardProps = {
   label: string;
   value: ReactNode;
-  description?: string;
+  description: string;
   className?: string;
 };
 
@@ -300,18 +397,18 @@ function SummaryCard({
         {value}
       </p>
 
-      {description ? (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          {description}
-        </p>
-      ) : null}
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {description}
+      </p>
     </div>
   );
 }
 
 type EditTradeModalProps = {
   form: EditForm;
+  availableTags: TradeTag[];
   saving: boolean;
+  onTagToggle: (tagId: string) => void;
   onChange: (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => void;
@@ -321,11 +418,31 @@ type EditTradeModalProps = {
 
 function EditTradeModal({
   form,
+  availableTags,
   saving,
+  onTagToggle,
   onChange,
   onSubmit,
   onClose,
 }: EditTradeModalProps) {
+  const selectedTagIds = new Set(form.tagIds);
+
+  const groupedTags = availableTags.reduce<GroupedTags>((groups, tag) => {
+    const groupName = tag.groupName || "custom";
+
+    if (!groups[groupName]) {
+      groups[groupName] = [];
+    }
+
+    groups[groupName].push(tag);
+
+    return groups;
+  }, {});
+
+  const orderedGroups = Object.entries(groupedTags).sort(([first], [second]) =>
+    getGroupLabel(first).localeCompare(getGroupLabel(second)),
+  );
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
@@ -465,25 +582,50 @@ function EditTradeModal({
           </div>
 
           <div>
-            <label
-              htmlFor="edit-tags"
-              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
-            >
+            <p className="mb-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
               Tags
-            </label>
+            </p>
 
-            <input
-              id="edit-tags"
-              name="tags"
-              type="text"
-              value={form.tags}
-              onChange={onChange}
-              className={`${INPUT_BASE} w-full`}
-              placeholder="breakout, profitable, expiry-day"
-            />
+            <div className="max-h-64 space-y-4 overflow-y-auto rounded-xl border border-slate-300 p-3 dark:border-slate-700">
+              {orderedGroups.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  No tags available.
+                </p>
+              ) : (
+                orderedGroups.map(([groupName, tags]) => (
+                  <section key={groupName}>
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {getGroupLabel(groupName)}
+                    </h3>
+
+                    <div className="flex flex-wrap gap-2">
+                      {tags.map((tag) => {
+                        const isSelected = selectedTagIds.has(tag._id);
+
+                        return (
+                          <button
+                            key={tag._id}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() => onTagToggle(tag._id)}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                              isSelected
+                                ? "border-sky-600 bg-sky-600 text-white dark:border-sky-400 dark:bg-sky-400 dark:text-slate-950"
+                                : "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-400 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300"
+                            }`}
+                          >
+                            {getTagLabel(tag)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))
+              )}
+            </div>
 
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Separate multiple tags with commas.
+              Select one or more tags.
             </p>
           </div>
 
@@ -530,21 +672,21 @@ function EditTradeModal({
   );
 }
 
-type TradeTableRowProps = {
+type TradeRowProps = {
   trade: TradeListItem;
-  actionsDisabled: boolean;
+  disabled: boolean;
   isDeleting: boolean;
   onEdit: () => void;
   onDelete: () => void;
 };
 
-function TradeTableRow({
+function TradeRow({
   trade,
-  actionsDisabled,
+  disabled,
   isDeleting,
   onEdit,
   onDelete,
-}: TradeTableRowProps) {
+}: TradeRowProps) {
   return (
     <tr className="border-b border-slate-100 last:border-0 dark:border-slate-800">
       <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
@@ -584,8 +726,8 @@ function TradeTableRow({
       </td>
 
       <td className="px-5 py-4">
-        <div className="flex max-w-[220px] flex-wrap gap-1.5">
-          <TradeTags tags={trade.tags} />
+        <div className="max-w-[240px]">
+          <GroupedTradeTags tags={trade.tags} />
         </div>
       </td>
 
@@ -594,7 +736,7 @@ function TradeTableRow({
           <TradeActions
             trade={trade}
             isDeleting={isDeleting}
-            disabled={actionsDisabled}
+            disabled={disabled}
             onEdit={onEdit}
             onDelete={onDelete}
           />
@@ -604,21 +746,21 @@ function TradeTableRow({
   );
 }
 
-type TradeMobileCardProps = {
+type TradeCardProps = {
   trade: TradeListItem;
-  actionsDisabled: boolean;
+  disabled: boolean;
   isDeleting: boolean;
   onEdit: () => void;
   onDelete: () => void;
 };
 
-function TradeMobileCard({
+function TradeCard({
   trade,
-  actionsDisabled,
+  disabled,
   isDeleting,
   onEdit,
   onDelete,
-}: TradeMobileCardProps) {
+}: TradeCardProps) {
   return (
     <article className="p-4">
       <div className="flex items-start justify-between gap-4">
@@ -635,7 +777,7 @@ function TradeMobileCard({
         <TradeActions
           trade={trade}
           isDeleting={isDeleting}
-          disabled={actionsDisabled}
+          disabled={disabled}
           onEdit={onEdit}
           onDelete={onDelete}
         />
@@ -653,11 +795,7 @@ function TradeMobileCard({
             Net P&amp;L
           </p>
 
-          <p
-            className={`mt-1 font-semibold ${pnlColor(
-              trade.netPnl,
-            )}`}
-          >
+          <p className={`mt-1 font-semibold ${pnlColor(trade.netPnl)}`}>
             {formatCurrency(trade.netPnl)}
           </p>
         </div>
@@ -673,9 +811,7 @@ function TradeMobileCard({
         </div>
 
         <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Charges
-          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Charges</p>
 
           <p className="mt-1 font-semibold text-slate-700 dark:text-slate-200">
             {formatCurrency(trade.charges)}
@@ -683,8 +819,8 @@ function TradeMobileCard({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <TradeTags tags={trade.tags} />
+      <div className="mt-3">
+        <GroupedTradeTags tags={trade.tags} />
       </div>
     </article>
   );
@@ -692,15 +828,17 @@ function TradeMobileCard({
 
 export default function TradeListPage() {
   const [trades, setTrades] = useState<TradeListItem[]>([]);
+
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const [editingTrade, setEditingTrade] =
-    useState<TradeListItem | null>(null);
+  const [editingTrade, setEditingTrade] = useState<TradeListItem | null>(null);
 
   const [editForm, setEditForm] = useState<EditForm>({
     date: "",
@@ -709,21 +847,79 @@ export default function TradeListPage() {
     riskTaken: "",
     charges: "",
     notes: "",
-    tags: "",
+    tagIds: [],
   });
 
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] =
-    useState<MessageType>("");
+  const [messageType, setMessageType] = useState<MessageType>("");
+
+  const availableTags = useMemo<TradeTag[]>(() => {
+    const tagMap = new Map<string, TradeTag>();
+
+    trades.forEach((trade) => {
+      trade.tags?.forEach((tag) => {
+        const normalizedTag = normalizeTag(tag);
+
+        if (!normalizedTag || tagMap.has(normalizedTag._id)) {
+          return;
+        }
+
+        tagMap.set(normalizedTag._id, normalizedTag);
+      });
+    });
+
+    return Array.from(tagMap.values()).sort((first, second) => {
+      const groupComparison = getGroupLabel(first.groupName).localeCompare(
+        getGroupLabel(second.groupName),
+      );
+
+      if (groupComparison !== 0) {
+        return groupComparison;
+      }
+
+      return first.value.localeCompare(second.value);
+    });
+  }, [trades]);
+
+  const groupedAvailableTags = useMemo(() => {
+    return availableTags.reduce<GroupedTags>((groups, tag) => {
+      const groupName = tag.groupName || "custom";
+
+      if (!groups[groupName]) {
+        groups[groupName] = [];
+      }
+
+      groups[groupName].push(tag);
+
+      return groups;
+    }, {});
+  }, [availableTags]);
+
+  const orderedAvailableTagGroups = useMemo(() => {
+    return Object.entries(groupedAvailableTags).sort(([first], [second]) =>
+      getGroupLabel(first).localeCompare(getGroupLabel(second)),
+    );
+  }, [groupedAvailableTags]);
+
+  const filteredTrades = useMemo(() => {
+    if (selectedTagIds.length === 0) {
+      return trades;
+    }
+
+    return trades.filter((trade) => {
+      const tradeTagIds = new Set((trade.tags ?? []).map((tag) => tag._id));
+
+      return selectedTagIds.every((tagId) => tradeTagIds.has(tagId));
+    });
+  }, [selectedTagIds, trades]);
 
   const totals = useMemo<TradeTotals>(() => {
-    return trades.reduce(
+    return filteredTrades.reduce(
       (summary, trade) => ({
         totalTrades: summary.totalTrades + 1,
         netPnl: summary.netPnl + getNumber(trade.netPnl),
         charges: summary.charges + getNumber(trade.charges),
-        riskTaken:
-          summary.riskTaken + getNumber(trade.riskTaken),
+        riskTaken: summary.riskTaken + getNumber(trade.riskTaken),
       }),
       {
         totalTrades: 0,
@@ -732,100 +928,104 @@ export default function TradeListPage() {
         riskTaken: 0,
       },
     );
-  }, [trades]);
+  }, [filteredTrades]);
 
-  const showMessage = useCallback(
-    (text: string, type: MessageType) => {
-      setMessage(text);
-      setMessageType(type);
-    },
-    [],
-  );
+  const showMessage = useCallback((text: string, type: MessageType) => {
+    setMessage(text);
+    setMessageType(type);
+  }, []);
 
-  const loadTrades = useCallback(async () => {
-    if (startDate && endDate && startDate > endDate) {
-      setTrades([]);
-      setLoading(false);
-      showMessage(
-        "Start date cannot be later than end date",
-        "error",
-      );
-      return;
-    }
-
+  useEffect(() => {
     const controller = new AbortController();
 
-    try {
-      setLoading(true);
-      setMessage("");
-      setMessageType("");
+    async function loadTrades() {
+      if (startDate && endDate && startDate > endDate) {
+        setTrades([]);
+        setSelectedTagIds([]);
+        setLoading(false);
 
-      const params = new URLSearchParams();
+        showMessage("Start date cannot be later than end date", "error");
 
-      if (startDate) {
-        params.set("startDate", startDate);
-      }
-
-      if (endDate) {
-        params.set("endDate", endDate);
-      }
-
-      const query = params.toString();
-
-      const response = await fetch(
-        `/api/savetrade${query ? `?${query}` : ""}`,
-        {
-          method: "GET",
-          cache: "no-store",
-          signal: controller.signal,
-        },
-      );
-
-      const data = await readJsonSafely<TradesResponse>(
-        response,
-      );
-
-      if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.error || "Failed to load trades",
-        );
-      }
-
-      setTrades(
-        Array.isArray(data.trades) ? data.trades : [],
-      );
-    } catch (error) {
-      if (
-        error instanceof DOMException &&
-        error.name === "AbortError"
-      ) {
         return;
       }
 
-      setTrades([]);
+      try {
+        setLoading(true);
+        setMessage("");
+        setMessageType("");
 
-      showMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to load trades",
-        "error",
-      );
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
+        const params = new URLSearchParams();
+
+        if (startDate) {
+          params.set("startDate", startDate);
+        }
+
+        if (endDate) {
+          params.set("endDate", endDate);
+        }
+
+        const query = params.toString();
+
+        const response = await fetch(
+          `/api/savetrade${query ? `?${query}` : ""}`,
+          {
+            method: "GET",
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+
+        const data = await readJsonSafely<TradesResponse>(response);
+
+        if (!response.ok || !data?.ok) {
+          throw new Error(data?.error || "Failed to load trades");
+        }
+
+        const loadedTrades = Array.isArray(data.trades)
+          ? data.trades.map(normalizeTrade)
+          : [];
+
+        setTrades(loadedTrades);
+        setSelectedTagIds([]);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        setTrades([]);
+
+        showMessage(
+          error instanceof Error ? error.message : "Failed to load trades",
+          "error",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
+
+    void loadTrades();
 
     return () => controller.abort();
   }, [endDate, showMessage, startDate]);
 
-  useEffect(() => {
-    void loadTrades();
-  }, [loadTrades]);
-
   function clearFilters() {
     setStartDate("");
     setEndDate("");
+    setSelectedTagIds([]);
+  }
+
+  function toggleTagFilter(tagId: string) {
+    setSelectedTagIds((currentIds) =>
+      currentIds.includes(tagId)
+        ? currentIds.filter((currentId) => currentId !== tagId)
+        : [...currentIds, tagId],
+    );
+  }
+
+  function clearTagFilters() {
+    setSelectedTagIds([]);
   }
 
   function openEditModal(trade: TradeListItem) {
@@ -838,8 +1038,7 @@ export default function TradeListPage() {
       riskTaken: String(trade.riskTaken ?? ""),
       charges: String(trade.charges ?? ""),
       notes: trade.notes ?? "",
-      tags:
-        trade.tags?.map((tag) => tag.title).join(", ") ?? "",
+      tagIds: (trade.tags ?? []).map((tag) => tag._id),
     });
 
     setMessage("");
@@ -853,9 +1052,7 @@ export default function TradeListPage() {
   }
 
   function handleEditInputChange(
-    event: ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement
-    >,
+    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
     const { name, value } = event.target;
 
@@ -865,9 +1062,16 @@ export default function TradeListPage() {
     }));
   }
 
-  async function handleEditSubmit(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  function toggleEditTag(tagId: string) {
+    setEditForm((current) => ({
+      ...current,
+      tagIds: current.tagIds.includes(tagId)
+        ? current.tagIds.filter((currentId) => currentId !== tagId)
+        : [...current.tagIds, tagId],
+    }));
+  }
+
+  async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!editingTrade) {
@@ -877,54 +1081,27 @@ export default function TradeListPage() {
     const date = editForm.date;
     const trade = editForm.trade.trim();
     const outcome = Number(editForm.outcome);
-    const riskTaken = Math.abs(
-      Number(editForm.riskTaken),
-    );
+    const riskTaken = Math.abs(Number(editForm.riskTaken));
     const charges = Math.abs(Number(editForm.charges));
     const notes = editForm.notes.trim();
 
-    const tags = editForm.tags
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-
     if (!date || !trade) {
-      showMessage(
-        "Date and contract are required",
-        "error",
-      );
+      showMessage("Date and contract are required", "error");
       return;
     }
 
     if (!Number.isFinite(outcome)) {
-      showMessage(
-        "Outcome must be a valid number",
-        "error",
-      );
+      showMessage("Outcome must be a valid number", "error");
       return;
     }
 
     if (!Number.isFinite(riskTaken)) {
-      showMessage(
-        "Risk taken must be a valid number",
-        "error",
-      );
-      return;
-    }
-
-    if (riskTaken < 0) {
-      showMessage(
-        "Risk taken cannot be negative",
-        "error",
-      );
+      showMessage("Risk taken must be a valid number", "error");
       return;
     }
 
     if (!Number.isFinite(charges)) {
-      showMessage(
-        "Charges must be a valid number",
-        "error",
-      );
+      showMessage("Charges must be a valid number", "error");
       return;
     }
 
@@ -935,61 +1112,46 @@ export default function TradeListPage() {
       setMessage("");
       setMessageType("");
 
-      const response = await fetch(
-        `/api/savetrade/${editingTrade._id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            date,
-            trade,
-            outcome,
-            riskTaken,
-            charges,
-            netPnl,
-            notes,
-            tags,
-          }),
+      const response = await fetch(`/api/savetrade/${editingTrade._id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          date,
+          trade,
+          outcome,
+          riskTaken,
+          charges,
+          netPnl,
+          notes,
+          tagIds: editForm.tagIds,
+        }),
+      });
 
-      const data =
-        await readJsonSafely<TradeMutationResponse>(
-          response,
-        );
+      const data = await readJsonSafely<TradeMutationResponse>(response);
 
       if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.error || "Failed to update trade",
-        );
+        throw new Error(data?.error || "Failed to update trade");
       }
 
       if (!data.trade) {
-        throw new Error(
-          "Updated trade was not returned by the API",
-        );
+        throw new Error("Updated trade was not returned by the API");
       }
 
       setTrades((currentTrades) =>
         currentTrades.map((currentTrade) =>
           currentTrade._id === editingTrade._id
-            ? data.trade!
+            ? normalizeTrade(data.trade!)
             : currentTrade,
         ),
       );
 
       setEditingTrade(null);
-      showMessage(
-        "Trade updated successfully",
-        "success",
-      );
+      showMessage("Trade updated successfully", "success");
     } catch (error) {
       showMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to update trade",
+        error instanceof Error ? error.message : "Failed to update trade",
         "error",
       );
     } finally {
@@ -997,10 +1159,7 @@ export default function TradeListPage() {
     }
   }
 
-  async function handleDelete(
-    tradeId: string,
-    tradeName: string,
-  ) {
+  async function handleDelete(tradeId: string, tradeName: string) {
     const confirmed = window.confirm(
       `Are you sure you want to delete "${tradeName}"? This action cannot be undone.`,
     );
@@ -1014,39 +1173,24 @@ export default function TradeListPage() {
       setMessage("");
       setMessageType("");
 
-      const response = await fetch(
-        `/api/savetrade/${tradeId}`,
-        {
-          method: "DELETE",
-        },
-      );
+      const response = await fetch(`/api/savetrade/${tradeId}`, {
+        method: "DELETE",
+      });
 
-      const data =
-        await readJsonSafely<TradeMutationResponse>(
-          response,
-        );
+      const data = await readJsonSafely<TradeMutationResponse>(response);
 
       if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.error || "Failed to delete trade",
-        );
+        throw new Error(data?.error || "Failed to delete trade");
       }
 
       setTrades((currentTrades) =>
-        currentTrades.filter(
-          (trade) => trade._id !== tradeId,
-        ),
+        currentTrades.filter((trade) => trade._id !== tradeId),
       );
 
-      showMessage(
-        "Trade deleted successfully",
-        "success",
-      );
+      showMessage("Trade deleted successfully", "success");
     } catch (error) {
       showMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to delete trade",
+        error instanceof Error ? error.message : "Failed to delete trade",
         "error",
       );
     } finally {
@@ -1054,8 +1198,9 @@ export default function TradeListPage() {
     }
   }
 
-  const actionsDisabled =
-    savingEdit || deletingId !== null;
+  const actionsDisabled = savingEdit || deletingId !== null;
+
+  const hasSelectedTags = selectedTagIds.length > 0;
 
   return (
     <main className="min-h-screen bg-slate-100 dark:bg-slate-950">
@@ -1094,9 +1239,7 @@ export default function TradeListPage() {
                 id="start-date"
                 type="date"
                 value={startDate}
-                onChange={(event) =>
-                  setStartDate(event.target.value)
-                }
+                onChange={(event) => setStartDate(event.target.value)}
                 className={`${INPUT_BASE} w-full`}
               />
             </div>
@@ -1113,9 +1256,7 @@ export default function TradeListPage() {
                 id="end-date"
                 type="date"
                 value={endDate}
-                onChange={(event) =>
-                  setEndDate(event.target.value)
-                }
+                onChange={(event) => setEndDate(event.target.value)}
                 className={`${INPUT_BASE} w-full`}
               />
             </div>
@@ -1130,18 +1271,86 @@ export default function TradeListPage() {
           </div>
         </section>
 
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Filter by tags
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Tags are generated from trades in the selected date range.
+              </p>
+            </div>
+
+            {hasSelectedTags ? (
+              <button
+                type="button"
+                onClick={clearTagFilters}
+                className="self-start rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:self-auto"
+              >
+                Clear Tags
+              </button>
+            ) : null}
+          </div>
+
+          {availableTags.length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              No tags found in the selected date range.
+            </p>
+          ) : (
+            <div className="space-y-5">
+              {orderedAvailableTagGroups.map(([groupName, tags]) => (
+                <section key={groupName}>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {getGroupLabel(groupName)}
+                  </h3>
+
+                  <div className="flex flex-wrap gap-2">
+                    {tags.map((tag) => {
+                      const isSelected = selectedTagIds.includes(tag._id);
+
+                      return (
+                        <button
+                          key={tag._id}
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => toggleTagFilter(tag._id)}
+                          className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                            isSelected
+                              ? "border-sky-600 bg-sky-600 text-white dark:border-sky-400 dark:bg-sky-400 dark:text-slate-950"
+                              : "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-400 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/60"
+                          }`}
+                        >
+                          {getTagLabel(tag)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+
+          {hasSelectedTags ? (
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              Showing trades containing all selected tags.
+            </p>
+          ) : null}
+        </section>
+
         <section className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
             label="Total Trades"
             value={totals.totalTrades}
-            description="Active date range"
+            description="After active filters"
           />
 
           <SummaryCard
             label="Total Net P&L"
             value={formatCurrency(totals.netPnl)}
             description="After charges"
-            className={`${pnlCardClass(totals.netPnl)}`}
+            className={pnlCardClass(totals.netPnl)}
           />
 
           <SummaryCard
@@ -1161,7 +1370,7 @@ export default function TradeListPage() {
         {message ? (
           <div
             role="status"
-            className={`mb-6 rounded-xl border px-4 py-3 text-sm ${readMessageClass(
+            className={`mb-6 rounded-xl border px-4 py-3 text-sm ${messageClass(
               messageType,
             )}`}
           >
@@ -1182,6 +1391,16 @@ export default function TradeListPage() {
 
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 Try changing the date range or save a new trade.
+              </p>
+            </div>
+          ) : filteredTrades.length === 0 ? (
+            <div className="p-8 text-center">
+              <p className="font-medium text-slate-700 dark:text-slate-200">
+                No trades match the selected tags
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Try selecting different tags or clear the tag filters.
               </p>
             </div>
           ) : (
@@ -1221,23 +1440,14 @@ export default function TradeListPage() {
                   </thead>
 
                   <tbody>
-                    {trades.map((trade) => (
-                      <TradeTableRow
+                    {filteredTrades.map((trade) => (
+                      <TradeRow
                         key={trade._id}
                         trade={trade}
-                        actionsDisabled={actionsDisabled}
-                        isDeleting={
-                          deletingId === trade._id
-                        }
-                        onEdit={() =>
-                          openEditModal(trade)
-                        }
-                        onDelete={() =>
-                          handleDelete(
-                            trade._id,
-                            trade.trade,
-                          )
-                        }
+                        disabled={actionsDisabled}
+                        isDeleting={deletingId === trade._id}
+                        onEdit={() => openEditModal(trade)}
+                        onDelete={() => handleDelete(trade._id, trade.trade)}
                       />
                     ))}
                   </tbody>
@@ -1245,23 +1455,14 @@ export default function TradeListPage() {
               </div>
 
               <div className="divide-y divide-slate-200 md:hidden dark:divide-slate-800">
-                {trades.map((trade) => (
-                  <TradeMobileCard
+                {filteredTrades.map((trade) => (
+                  <TradeCard
                     key={trade._id}
                     trade={trade}
-                    actionsDisabled={actionsDisabled}
-                    isDeleting={
-                      deletingId === trade._id
-                    }
-                    onEdit={() =>
-                      openEditModal(trade)
-                    }
-                    onDelete={() =>
-                      handleDelete(
-                        trade._id,
-                        trade.trade,
-                      )
-                    }
+                    disabled={actionsDisabled}
+                    isDeleting={deletingId === trade._id}
+                    onEdit={() => openEditModal(trade)}
+                    onDelete={() => handleDelete(trade._id, trade.trade)}
                   />
                 ))}
               </div>
@@ -1273,7 +1474,9 @@ export default function TradeListPage() {
       {editingTrade ? (
         <EditTradeModal
           form={editForm}
+          availableTags={availableTags}
           saving={savingEdit}
+          onTagToggle={toggleEditTag}
           onChange={handleEditInputChange}
           onSubmit={handleEditSubmit}
           onClose={closeEditModal}

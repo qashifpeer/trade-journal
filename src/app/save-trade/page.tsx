@@ -9,10 +9,12 @@ import {
 } from "react";
 
 type TagItem = {
-  _id?: string;
-  title: string;
+  _id: string;
   value: string;
+  groupName: string;
 };
+
+type GroupedTags = Record<string, TagItem[]>;
 
 type MessageType = "success" | "warning" | "error" | "";
 
@@ -20,6 +22,25 @@ type SaveTradeResponse = {
   ok?: boolean;
   id?: string;
   error?: string;
+};
+
+type TagsResponse = {
+  ok?: boolean;
+  tags?: TagItem[];
+  error?: string;
+};
+
+const GROUP_LABELS: Record<string, string> = {
+  day: "Day",
+  emotion: "Emotions",
+  emotions: "Emotions",
+  mistake: "Mistakes",
+  mistakes: "Mistakes",
+  marketCondition: "Market Conditions",
+  tradeSetup: "Trade Setups",
+  session: "Sessions",
+  instrument: "Instruments",
+  custom: "Other",
 };
 
 const INPUT_BASE =
@@ -35,14 +56,13 @@ function getTodayLocalDate() {
   const now = new Date();
 
   const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(
+    2,
+    "0",
+  );
   const day = String(now.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
-}
-
-function normalizeTag(value: string) {
-  return value.trim().toLowerCase();
 }
 
 function parseNumber(value: string) {
@@ -52,7 +72,17 @@ function parseNumber(value: string) {
 
   const parsedValue = Number(value);
 
-  return Number.isFinite(parsedValue) ? parsedValue : null;
+  return Number.isFinite(parsedValue)
+    ? parsedValue
+    : null;
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(Number(value) || 0);
 }
 
 function pnlColor(value: number) {
@@ -111,29 +141,65 @@ async function readJsonSafely<T>(
   }
 }
 
-function createCustomTag(value: string): TagItem {
-  const title = value.trim();
+function getTagLabel(tag: TagItem) {
+  return tag.value || "Unnamed tag";
+}
+
+function getGroupLabel(groupName: string) {
+  return (
+    GROUP_LABELS[groupName] ||
+    groupName
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[-_]/g, " ")
+      .replace(/\b\w/g, (letter) =>
+        letter.toUpperCase(),
+      )
+  );
+}
+
+function normalizeTag(tag: TagItem): TagItem | null {
+  if (
+    !tag ||
+    typeof tag._id !== "string" ||
+    typeof tag.value !== "string"
+  ) {
+    return null;
+  }
+
+  const value = tag.value.trim();
+
+  if (!value) {
+    return null;
+  }
 
   return {
-    title,
-    value: normalizeTag(title),
+    _id: tag._id,
+    value,
+    groupName:
+      typeof tag.groupName === "string" &&
+      tag.groupName.trim()
+        ? tag.groupName.trim()
+        : "custom",
   };
 }
 
 export default function SaveTradePage() {
-  const [date, setDate] = useState(getTodayLocalDate());
+  const [date, setDate] = useState(
+    getTodayLocalDate(),
+  );
   const [trade, setTrade] = useState("");
   const [outcome, setOutcome] = useState("");
   const [riskTaken, setRiskTaken] = useState("");
   const [charges, setCharges] = useState("");
   const [notes, setNotes] = useState("");
 
-  const [tags, setTags] = useState<TagItem[]>([]);
-  const [tagInput, setTagInput] = useState("");
-  const [tagSuggestions, setTagSuggestions] = useState<TagItem[]>(
-    [],
-  );
-  const [loadingTags, setLoadingTags] = useState(false);
+  const [availableTags, setAvailableTags] = useState<
+    TagItem[]
+  >([]);
+  const [selectedTags, setSelectedTags] = useState<
+    TagItem[]
+  >([]);
+  const [loadingTags, setLoadingTags] = useState(true);
 
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] =
@@ -141,13 +207,12 @@ export default function SaveTradePage() {
 
   const [saving, setSaving] = useState(false);
 
-  const trimmedTagInput = tagInput.trim();
-  const normalizedTagInput = normalizeTag(trimmedTagInput);
-
   const outcomeNumber = parseNumber(outcome) ?? 0;
+
   const riskTakenNumber = Math.abs(
     parseNumber(riskTaken) ?? 0,
   );
+
   const chargesNumber = Math.abs(
     parseNumber(charges) ?? 0,
   );
@@ -157,45 +222,50 @@ export default function SaveTradePage() {
     [outcomeNumber, chargesNumber],
   );
 
-  const hasExactMatch = tagSuggestions.some(
-    (tag) => tag.value === normalizedTagInput,
+  const selectedTagIds = useMemo(
+    () =>
+      new Set(
+        selectedTags.map((tag) => tag._id),
+      ),
+    [selectedTags],
   );
 
-  const isAlreadySelected = tags.some(
-    (tag) => tag.value === normalizedTagInput,
-  );
+  const groupedTags = useMemo<GroupedTags>(() => {
+    return availableTags.reduce<GroupedTags>(
+      (groups, tag) => {
+        const groupName =
+          tag.groupName || "custom";
 
-  const showDropdown = trimmedTagInput.length > 0;
+        if (!groups[groupName]) {
+          groups[groupName] = [];
+        }
 
-  const showCreateOption =
-    !loadingTags &&
-    trimmedTagInput.length > 0 &&
-    !hasExactMatch &&
-    !isAlreadySelected;
+        groups[groupName].push(tag);
 
-  const showEmptyNote =
-    !loadingTags &&
-    trimmedTagInput.length > 0 &&
-    tagSuggestions.length === 0 &&
-    !hasExactMatch;
+        return groups;
+      },
+      {},
+    );
+  }, [availableTags]);
+
+  const orderedTagGroups = useMemo(() => {
+    return Object.entries(groupedTags).sort(
+      ([firstGroup], [secondGroup]) =>
+        getGroupLabel(firstGroup).localeCompare(
+          getGroupLabel(secondGroup),
+        ),
+    );
+  }, [groupedTags]);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    async function fetchTags() {
-      if (!trimmedTagInput) {
-        setTagSuggestions([]);
-        setLoadingTags(false);
-        return;
-      }
-
+    async function loadTags() {
       try {
         setLoadingTags(true);
 
         const response = await fetch(
-          `/api/savetrade/tags?q=${encodeURIComponent(
-            trimmedTagInput,
-          )}`,
+          "/api/savetrade/tags",
           {
             method: "GET",
             cache: "no-store",
@@ -203,19 +273,58 @@ export default function SaveTradePage() {
           },
         );
 
-        const data =
-          await readJsonSafely<{ tags?: TagItem[] }>(
-            response,
-          );
+        // DEBUG: Log the response
+        const text = await response.text();
+        // console.log("Status:", response.status);
+        // console.log("Headers:", response.headers.get("content-type"));
+        // console.log("Body:", text);
 
-        if (!response.ok) {
-          setTagSuggestions([]);
-          return;
+        // Then parse it
+        if (!text) {
+          return null;
+        }
+        const data = JSON.parse(text) as TagsResponse;
+
+        // const data =
+        //   await readJsonSafely<TagsResponse>(
+        //     response,
+        //   );
+
+        if (!response.ok || !data?.ok) {
+          throw new Error(
+            data?.error || "Failed to load tags",
+          );
         }
 
-        setTagSuggestions(
-          Array.isArray(data?.tags) ? data.tags : [],
-        );
+        const normalizedTags = (
+          Array.isArray(data.tags)
+            ? data.tags
+            : []
+        )
+          .map(normalizeTag)
+          .filter(
+            (tag): tag is TagItem => tag !== null,
+          )
+          .sort((first, second) => {
+            const groupComparison =
+              getGroupLabel(
+                first.groupName,
+              ).localeCompare(
+                getGroupLabel(
+                  second.groupName,
+                ),
+              );
+
+            if (groupComparison !== 0) {
+              return groupComparison;
+            }
+
+            return first.value.localeCompare(
+              second.value,
+            );
+          });
+
+        setAvailableTags(normalizedTags);
       } catch (error) {
         if (
           error instanceof DOMException &&
@@ -224,9 +333,14 @@ export default function SaveTradePage() {
           return;
         }
 
-        if (!controller.signal.aborted) {
-          setTagSuggestions([]);
-        }
+        setAvailableTags([]);
+
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Failed to load tags",
+        );
+        setMessageType("warning");
       } finally {
         if (!controller.signal.aborted) {
           setLoadingTags(false);
@@ -234,63 +348,31 @@ export default function SaveTradePage() {
       }
     }
 
-    const timer = window.setTimeout(fetchTags, 250);
+    void loadTags();
 
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [trimmedTagInput]);
+    return () => controller.abort();
+  }, []);
 
-  function addTag(tag: TagItem) {
-    const title = tag.title.trim();
-    const value = normalizeTag(tag.value || title);
+  function toggleTag(tag: TagItem) {
+    setSelectedTags((currentTags) => {
+      const alreadySelected = currentTags.some(
+        (currentTag) =>
+          currentTag._id === tag._id,
+      );
 
-    if (!title || !value) {
-      return;
-    }
+      if (alreadySelected) {
+        return currentTags.filter(
+          (currentTag) =>
+            currentTag._id !== tag._id,
+        );
+      }
 
-    const alreadySelected = tags.some(
-      (selectedTag) => selectedTag.value === value,
-    );
-
-    if (alreadySelected) {
-      setTagInput("");
-      setTagSuggestions([]);
-      return;
-    }
-
-    setTags((currentTags) => [
-      ...currentTags,
-      {
-        ...tag,
-        title,
-        value,
-      },
-    ]);
-
-    setTagInput("");
-    setTagSuggestions([]);
+      return [...currentTags, tag];
+    });
   }
 
-  function removeTag(value: string) {
-    setTags((currentTags) =>
-      currentTags.filter((tag) => tag.value !== value),
-    );
-  }
-
-  function handleTagEnter() {
-    if (!trimmedTagInput) {
-      return;
-    }
-
-    const existingTag = tagSuggestions.find(
-      (tag) => tag.value === normalizedTagInput,
-    );
-
-    addTag(
-      existingTag ?? createCustomTag(trimmedTagInput),
-    );
+  function clearSelectedTags() {
+    setSelectedTags([]);
   }
 
   function handleChargesChange(
@@ -323,7 +405,9 @@ export default function SaveTradePage() {
     const numericValue = Number(value);
 
     if (Number.isFinite(numericValue)) {
-      setRiskTaken(String(Math.abs(numericValue)));
+      setRiskTaken(
+        String(Math.abs(numericValue)),
+      );
     }
   }
 
@@ -334,9 +418,7 @@ export default function SaveTradePage() {
     setRiskTaken("");
     setCharges("");
     setNotes("");
-    setTags([]);
-    setTagInput("");
-    setTagSuggestions([]);
+    setSelectedTags([]);
   }
 
   async function handleSubmit(
@@ -351,7 +433,9 @@ export default function SaveTradePage() {
     }
 
     if (!trade.trim()) {
-      setMessage("Trade or contract name is required");
+      setMessage(
+        "Trade or contract name is required",
+      );
       setMessageType("error");
       return;
     }
@@ -359,7 +443,9 @@ export default function SaveTradePage() {
     const parsedOutcome = parseNumber(outcome);
 
     if (parsedOutcome === null) {
-      setMessage("Outcome must be a valid number");
+      setMessage(
+        "Outcome must be a valid number",
+      );
       setMessageType("error");
       return;
     }
@@ -373,14 +459,37 @@ export default function SaveTradePage() {
     }
 
     if (parsedRiskTaken < 0) {
-      setMessage("Risk taken cannot be negative");
+      setMessage(
+        "Risk taken cannot be negative",
+      );
       setMessageType("error");
       return;
     }
 
     const parsedCharges = parseNumber(charges) ?? 0;
-    const normalizedCharges = Math.abs(parsedCharges);
-    const normalizedRiskTaken = Math.abs(parsedRiskTaken);
+
+    if (parsedCharges < 0) {
+      setMessage(
+        "Charges cannot be negative",
+      );
+      setMessageType("error");
+      return;
+    }
+
+    const normalizedCharges = Math.abs(
+      parsedCharges,
+    );
+    const normalizedRiskTaken = Math.abs(
+      parsedRiskTaken,
+    );
+
+    const tagIds = Array.from(
+      new Set(
+        selectedTags
+          .map((tag) => tag._id.trim())
+          .filter(Boolean),
+      ),
+    );
 
     try {
       setSaving(true);
@@ -398,9 +507,13 @@ export default function SaveTradePage() {
           outcome: parsedOutcome,
           riskTaken: normalizedRiskTaken,
           charges: normalizedCharges,
-          netPnl: parsedOutcome - normalizedCharges,
+          netPnl:
+            parsedOutcome - normalizedCharges,
           notes: notes.trim(),
-          tags: tags.map((tag) => tag.title),
+
+          // Send only existing tag document IDs.
+          // The API converts them into references.
+          tags: tagIds,
         }),
       });
 
@@ -551,14 +664,17 @@ export default function SaveTradePage() {
                     min="0"
                     step="any"
                     value={riskTaken}
-                    onChange={handleRiskTakenChange}
+                    onChange={
+                      handleRiskTakenChange
+                    }
                     className={INPUT_BASE}
                     placeholder="1000"
                     required
                   />
 
                   <p className={HELP_TEXT_BASE}>
-                    Maximum amount you were willing to risk.
+                    Maximum amount you were willing to
+                    risk.
                   </p>
                 </div>
 
@@ -589,110 +705,100 @@ export default function SaveTradePage() {
               </div>
 
               <div>
-                <label
-                  htmlFor="tag-input"
-                  className={LABEL_BASE}
-                >
-                  Tags
-                </label>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <label className={LABEL_BASE}>
+                    Tags
+                  </label>
 
-                <div className="relative">
-                  <div className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-900">
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      {tags.map((tag) => (
-                        <span
-                          key={tag._id ?? tag.value}
-                          className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
-                        >
-                          {tag.title}
-
-                          <button
-                            type="button"
-                            aria-label={`Remove ${tag.title} tag`}
-                            onClick={() =>
-                              removeTag(tag.value)
-                            }
-                            className="ml-1.5 text-sky-700 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-
-                    <input
-                      id="tag-input"
-                      type="text"
-                      value={tagInput}
-                      onChange={(event) =>
-                        setTagInput(event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          handleTagEnter();
-                        }
-                      }}
-                      className="w-full bg-transparent text-black outline-none uppercase placeholder:text-slate-400 dark:text-white dark:placeholder:text-slate-500"
-                      placeholder="Type a tag and press Enter"
-                    />
-                  </div>
-
-                  {showDropdown ? (
-                    <div className="absolute z-10 mt-2 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                      {loadingTags ? (
-                        <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
-                          Searching...
-                        </div>
-                      ) : (
-                        <>
-                          {tagSuggestions.map(
-                            (suggestion) => (
-                              <button
-                                key={
-                                  suggestion._id ??
-                                  suggestion.value
-                                }
-                                type="button"
-                                onClick={() =>
-                                  addTag(suggestion)
-                                }
-                                className="block w-full px-3 py-2 text-left text-sm uppercase text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                              >
-                                {suggestion.title}
-                              </button>
-                            ),
-                          )}
-
-                          {showCreateOption ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                addTag(
-                                  createCustomTag(
-                                    trimmedTagInput,
-                                  ),
-                                )
-                              }
-                              className="block w-full border-t border-slate-100 px-3 py-2 text-left text-sm font-medium uppercase text-sky-700 hover:bg-sky-50 dark:border-slate-700 dark:text-sky-300 dark:hover:bg-slate-800"
-                            >
-                              Use &quot;
-                              {trimmedTagInput}
-                              &quot;
-                            </button>
-                          ) : null}
-
-                          {showEmptyNote ? (
-                            <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                              No matching tag found. Use
-                              your typed tag above.
-                            </div>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
+                  {selectedTags.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={clearSelectedTags}
+                      className="text-xs font-medium text-sky-600 hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-200"
+                    >
+                      Clear selected
+                    </button>
                   ) : null}
                 </div>
+
+                <div
+                  className="rounded-xl border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
+                  aria-label="Trade tags"
+                >
+                  {loadingTags ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Loading tags...
+                    </p>
+                  ) : availableTags.length === 0 ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      No tags available.
+                    </p>
+                  ) : (
+                    <div className="max-h-72 space-y-5 overflow-y-auto pr-1">
+                      {orderedTagGroups.map(
+                        ([groupName, tags]) => (
+                          <section
+                            key={groupName}
+                          >
+                            <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                              {getGroupLabel(
+                                groupName,
+                              )}
+                            </h3>
+
+                            <div className="flex flex-wrap gap-2">
+                              {tags.map((tag) => {
+                                const isSelected =
+                                  selectedTagIds.has(
+                                    tag._id,
+                                  );
+
+                                return (
+                                  <button
+                                    key={tag._id}
+                                    type="button"
+                                    aria-pressed={
+                                      isSelected
+                                    }
+                                    onClick={() =>
+                                      toggleTag(tag)
+                                    }
+                                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                                      isSelected
+                                        ? "border-sky-600 bg-sky-600 text-white dark:border-sky-400 dark:bg-sky-400 dark:text-slate-950"
+                                        : "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-400 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/60"
+                                    }`}
+                                  >
+                                    {getTagLabel(
+                                      tag,
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </section>
+                        ),
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <p className={HELP_TEXT_BASE}>
+                  Select one or more tags for this trade.
+                </p>
+
+                {selectedTags.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selectedTags.map((tag) => (
+                      <span
+                        key={tag._id}
+                        className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                      >
+                        {getTagLabel(tag)}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div>
@@ -767,7 +873,7 @@ export default function SaveTradePage() {
                       outcomeNumber,
                     )}`}
                   >
-                    {outcomeNumber}
+                    {formatCurrency(outcomeNumber)}
                   </p>
                 </div>
 
@@ -777,7 +883,7 @@ export default function SaveTradePage() {
                   </p>
 
                   <p className="mt-1 text-xl font-bold text-amber-700 dark:text-amber-300">
-                    {riskTakenNumber}
+                    {formatCurrency(riskTakenNumber)}
                   </p>
                 </div>
 
@@ -795,7 +901,7 @@ export default function SaveTradePage() {
                       netPnl,
                     )}`}
                   >
-                    {netPnl}
+                    {formatCurrency(netPnl)}
                   </p>
                 </div>
 
@@ -805,7 +911,7 @@ export default function SaveTradePage() {
                   </p>
 
                   <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                    {chargesNumber}
+                    {formatCurrency(chargesNumber)}
                   </p>
                 </div>
 
@@ -815,7 +921,7 @@ export default function SaveTradePage() {
                   </p>
 
                   <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                    {tags.length}
+                    {selectedTags.length}
                   </p>
                 </div>
 
@@ -837,9 +943,9 @@ export default function SaveTradePage() {
               </p>
 
               <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                Every submission creates a separate trade
-                record. You can save multiple trades using the
-                same date.
+                Select existing tags before saving. The
+                selected tags will be attached to this trade
+                record.
               </p>
             </section>
           </aside>
