@@ -8,11 +8,9 @@
     "start": "next start",
     "lint": "eslint"
   },
-   "overrides": {
+  "overrides": {
     "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "@types/react": "18.3.1",
-    "@types/react-dom": "18.3.1"
+    "react-dom": "18.3.1"
   },
   "dependencies": {
     "@sanity/client": "^7.22.0",
@@ -20,20 +18,21 @@
     "install": "^0.13.0",
     "lucide-react": "^1.14.0",
     "next": "^16.3.6",
-    "next-sanity": "^9.0.0",
+    "next-sanity": "^12.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^3.9.2",
-    "sanity": "^5.14.1",
+    "sanity": "^5.31.2",
     "styled-components": "^6.4.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
-     "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "@types/react": "19.3.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
